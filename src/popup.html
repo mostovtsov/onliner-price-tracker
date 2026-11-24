@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Onliner Price Tracker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div>
+        <h1>Onliner Price Tracker</h1>
+        <p class="sub">Local watches · checks every <span id="intervalLabel">3</span>h</p>
+      </div>
+      <button type="button" id="checkNow" class="ghost">Check now</button>
+    </header>
+
+    <main>
+      <p id="empty" class="empty" hidden>
+        Open a product on
+        <a href="https://catalog.onliner.by" target="_blank" rel="noreferrer"
+          >catalog.onliner.by</a
+        >
+        and click <strong>Watch price</strong>.
+      </p>
+      <ul id="list" class="list"></ul>
+    </main>
+
+    <footer class="footer">
+      <span id="status"></span>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
