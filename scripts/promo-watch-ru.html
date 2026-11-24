@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Onliner Price Tracker — Watch button promo (RU)</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        width: 1280px;
+        height: 800px;
+        font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+        background: #e8eef5;
+        color: #0f172a;
+        position: relative;
+        overflow: hidden;
+      }
+      .page {
+        margin: 36px 48px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+        min-height: 720px;
+        padding: 28px 36px 40px;
+      }
+      .crumbs {
+        font-size: 13px;
+        color: #64748b;
+        margin-bottom: 18px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 36px;
+      }
+      .photo {
+        height: 360px;
+        border-radius: 12px;
+        background: linear-gradient(160deg, #dbeafe, #f1f5f9 55%, #e2e8f0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        font-size: 15px;
+      }
+      h1 {
+        font-size: 32px;
+        line-height: 1.2;
+        margin-bottom: 12px;
+      }
+      .price {
+        font-size: 36px;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 18px 0 8px;
+      }
+      .offers {
+        color: #64748b;
+        font-size: 14px;
+        margin-bottom: 24px;
+      }
+      .specs {
+        display: grid;
+        gap: 8px;
+        font-size: 14px;
+        color: #334155;
+      }
+      .specs span { color: #64748b; width: 140px; display: inline-block; }
+      .watch {
+        position: absolute;
+        right: 72px;
+        bottom: 72px;
+        background: #0ea5e9;
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 14px 22px;
+        font-size: 16px;
+        font-weight: 600;
+        box-shadow: 0 12px 30px rgba(14, 165, 233, 0.45);
+      }
+      .callout {
+        position: absolute;
+        right: 72px;
+        bottom: 140px;
+        background: #0f172a;
+        color: #f8fafc;
+        padding: 14px 18px;
+        border-radius: 12px;
+        max-width: 300px;
+        font-size: 14px;
+        line-height: 1.4;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.25);
+      }
+      .callout strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 13px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="crumbs">Каталог · Смартфоны · Apple · iPhone 15</div>
+      <div class="layout">
+        <div class="photo">Изображение товара</div>
+        <div>
+          <h1>Смартфон Apple iPhone 15 128GB Black</h1>
+          <div class="price">от 2&nbsp;499,00 р.</div>
+          <div class="offers">12 предложений · каталог Onliner</div>
+          <div class="specs">
+            <div><span>Экран</span> 6.1" OLED</div>
+            <div><span>Память</span> 128 GB</div>
+            <div><span>Камера</span> 48 Мп</div>
+            <div><span>Аккумулятор</span> до 20 ч видео</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>Onliner Price Tracker</strong>
+      Нажмите «Следить за ценой» на карточке товара. История хранится только на вашем устройстве.
+    </div>
+    <button class="watch" type="button">☆ Следить за ценой</button>
+  </body>
+</html>

@@ -7,10 +7,11 @@ ZIP_NAME="onliner-price-tracker.zip"
 STAGE="$OUT_DIR/_stage"
 
 rm -rf "$STAGE"
-mkdir -p "$STAGE/src" "$STAGE/icons" "$OUT_DIR"
+mkdir -p "$STAGE/src" "$STAGE/icons" "$STAGE/_locales" "$OUT_DIR"
 
 cp "$ROOT/manifest.json" "$STAGE/"
 cp "$ROOT"/src/* "$STAGE/src/"
+cp -R "$ROOT"/_locales/* "$STAGE/_locales/"
 cp "$ROOT"/icons/icon16.png "$ROOT"/icons/icon32.png \
    "$ROOT"/icons/icon48.png "$ROOT"/icons/icon128.png \
    "$STAGE/icons/"
@@ -18,7 +19,7 @@ cp "$ROOT"/icons/icon16.png "$ROOT"/icons/icon32.png \
 rm -f "$OUT_DIR/$ZIP_NAME"
 (
   cd "$STAGE"
-  zip -r -q "$OUT_DIR/$ZIP_NAME" manifest.json src icons
+  zip -r -q "$OUT_DIR/$ZIP_NAME" manifest.json src icons _locales
 )
 
 rm -rf "$STAGE"

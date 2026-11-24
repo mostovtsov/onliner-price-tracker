@@ -7,6 +7,8 @@
     getWatches,
     unwatchProduct,
     formatPrice,
+    t,
+    tPlural,
   } = OnlinerPT;
 
   const listEl = document.getElementById("list");
@@ -15,12 +17,28 @@
   const checkBtn = document.getElementById("checkNow");
   const intervalLabel = document.getElementById("intervalLabel");
 
-  intervalLabel.textContent = String(CHECK_INTERVAL_HOURS);
+  function applyStaticI18n() {
+    const name = t("extName");
+    document.title = name;
+    document.getElementById("extTitle").textContent = name;
+    document.getElementById("subtitleBefore").textContent = t(
+      "popupSubtitleBefore"
+    );
+    document.getElementById("subtitleAfter").textContent = t(
+      "popupSubtitleAfter"
+    );
+    checkBtn.textContent = t("checkNow");
+    document.getElementById("emptyBefore").textContent = t("emptyStateBefore");
+    document.getElementById("emptyAfter").textContent = t("emptyStateAfter");
+    intervalLabel.textContent = String(CHECK_INTERVAL_HOURS);
+  }
+
+  applyStaticI18n();
 
   function deltaClass(current, previous) {
     if (previous == null || current == null) return { text: "", cls: "flat" };
     const diff = current - previous;
-    if (Math.abs(diff) < 0.01) return { text: "no change", cls: "flat" };
+    if (Math.abs(diff) < 0.01) return { text: t("noChange"), cls: "flat" };
     if (diff < 0) {
       return {
         text: `↓ ${formatPrice(Math.abs(diff))}`,
@@ -50,7 +68,7 @@
     if (points.length === 0) {
       ctx.fillStyle = "#94a3b8";
       ctx.font = "12px Segoe UI, system-ui, sans-serif";
-      ctx.fillText("No price points yet", 12, cssH / 2 + 4);
+      ctx.fillText(t("noPricePoints"), 12, cssH / 2 + 4);
       return;
     }
 
@@ -125,7 +143,7 @@
     } else {
       const ph = document.createElement("div");
       ph.className = "thumb placeholder";
-      ph.textContent = "n/a";
+      ph.textContent = t("thumbPlaceholder");
       top.appendChild(ph);
     }
 
@@ -141,11 +159,11 @@
     const meta = document.createElement("div");
     meta.className = "meta";
     const checked = watch.lastCheckedAt
-      ? new Date(watch.lastCheckedAt).toLocaleString()
-      : "never";
+      ? new Date(watch.lastCheckedAt).toLocaleString("ru-BY")
+      : t("neverChecked");
     meta.textContent = watch.lastError
-      ? `Error: ${watch.lastError}`
-      : `Checked: ${checked}`;
+      ? t("errorPrefix", [watch.lastError])
+      : t("checkedPrefix", [checked]);
     mid.appendChild(meta);
     top.appendChild(mid);
 
@@ -173,13 +191,13 @@
     const hint = document.createElement("span");
     hint.className = "hint";
     const points = (watch.history || []).length;
-    hint.textContent = `${points} point${points === 1 ? "" : "s"} in history`;
+    hint.textContent = tPlural("historyPoints", points);
     actions.appendChild(hint);
 
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "danger";
-    remove.textContent = "Unwatch";
+    remove.textContent = t("unwatch");
     remove.addEventListener("click", async () => {
       await unwatchProduct(watch.key);
       await render();
@@ -201,20 +219,23 @@
     emptyEl.hidden = items.length > 0;
     items.forEach(renderWatch);
     statusEl.textContent = items.length
-      ? `${items.length} watched`
+      ? tPlural("watchedCount", items.length)
       : "";
   }
 
   checkBtn.addEventListener("click", async () => {
     checkBtn.disabled = true;
-    statusEl.textContent = "Checking…";
+    statusEl.textContent = t("checking");
     try {
       const res = await chrome.runtime.sendMessage({
         type: "CHECK_NOW",
         notify: true,
       });
-      if (!res?.ok) throw new Error(res?.error || "Check failed");
-      statusEl.textContent = `Checked ${res.checked}, drops ${res.drops}`;
+      if (!res?.ok) throw new Error(res?.error || t("checkFailed"));
+      statusEl.textContent = t("checkSummary", [
+        String(res.checked),
+        String(res.drops),
+      ]);
       await render();
     } catch (err) {
       statusEl.textContent = String(err?.message || err);

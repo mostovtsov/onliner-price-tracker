@@ -11,6 +11,7 @@ const {
   fetchProduct,
   sleep,
   formatPrice,
+  t,
 } = OnlinerPT;
 
 async function ensureAlarm() {
@@ -25,7 +26,7 @@ async function ensureAlarm() {
 
 async function notifyPriceDrop(watch, previous, next) {
   const drop = previous - next;
-  const title = "Цена снизилась";
+  const title = t("priceDroppedTitle");
   const message = `${watch.title}\n${formatPrice(previous, watch.currency)} → ${formatPrice(next, watch.currency)} (−${formatPrice(drop, watch.currency)})`;
   await chrome.notifications.create(`drop-${watch.key}-${Date.now()}`, {
     type: "basic",
@@ -49,7 +50,7 @@ async function checkAllWatches({ notify = true } = {}) {
       const snapshot = await fetchProduct(key);
       if (snapshot.price == null) {
         watch.lastCheckedAt = Date.now();
-        watch.lastError = "No price in API response";
+        watch.lastError = t("noPriceInApi");
         continue;
       }
 

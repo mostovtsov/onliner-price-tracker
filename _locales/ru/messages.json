@@ -1,0 +1,196 @@
+{
+  "extName": {
+    "message": "Onliner Price Tracker",
+    "description": "Extension name shown in Chrome and the popup"
+  },
+  "extDescription": {
+    "message": "Следите за ценами на catalog.onliner.by, храните историю локально и получайте уведомления о снижении.",
+    "description": "Chrome Web Store / manage-extensions description"
+  },
+  "popupSubtitleBefore": {
+    "message": "Локально · проверка каждые",
+    "description": "Popup header subtitle before the interval number"
+  },
+  "popupSubtitleAfter": {
+    "message": "ч",
+    "description": "Popup header subtitle after the interval number (hours)"
+  },
+  "checkNow": {
+    "message": "Проверить сейчас",
+    "description": "Popup button to run a price check immediately"
+  },
+  "emptyStateBefore": {
+    "message": "Откройте товар на ",
+    "description": "Empty state text before the catalog link"
+  },
+  "emptyStateAfter": {
+    "message": " и нажмите «Следить за ценой».",
+    "description": "Empty state text after the catalog link"
+  },
+  "noChange": {
+    "message": "без изменений",
+    "description": "Delta label when price is unchanged vs first history point"
+  },
+  "noPricePoints": {
+    "message": "Пока нет точек цены",
+    "description": "Chart placeholder when history is empty"
+  },
+  "thumbPlaceholder": {
+    "message": "н/д",
+    "description": "Thumbnail placeholder when product has no image"
+  },
+  "neverChecked": {
+    "message": "никогда",
+    "description": "Shown when a watch has never been checked"
+  },
+  "errorPrefix": {
+    "message": "Ошибка: $1",
+    "description": "Watch card error line",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Onliner API 404"
+      }
+    }
+  },
+  "checkedPrefix": {
+    "message": "Проверено: $1",
+    "description": "Watch card last-checked line",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "24.11.2026, 22:00:00"
+      }
+    }
+  },
+  "historyPointsOne": {
+    "message": "$1 точка в истории",
+    "description": "History count: 1",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyPointsFew": {
+    "message": "$1 точки в истории",
+    "description": "History count: 2–4",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyPointsMany": {
+    "message": "$1 точек в истории",
+    "description": "History count: 0, 5+",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "unwatch": {
+    "message": "Не следить",
+    "description": "Popup button to remove a watch"
+  },
+  "watchedCountOne": {
+    "message": "$1 в списке",
+    "description": "Footer watched count: 1",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "watchedCountFew": {
+    "message": "$1 в списке",
+    "description": "Footer watched count: 2–4",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "watchedCountMany": {
+    "message": "$1 в списке",
+    "description": "Footer watched count: 5+",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "checking": {
+    "message": "Проверка…",
+    "description": "Status while manual check runs"
+  },
+  "checkSummary": {
+    "message": "Проверено: $1, снижений: $2",
+    "description": "Status after manual check",
+    "placeholders": {
+      "checked": {
+        "content": "$1",
+        "example": "3"
+      },
+      "drops": {
+        "content": "$2",
+        "example": "1"
+      }
+    }
+  },
+  "checkFailed": {
+    "message": "Не удалось проверить",
+    "description": "Generic manual check failure"
+  },
+  "watchPrice": {
+    "message": "☆ Следить за ценой",
+    "description": "Content-script button when product is not watched"
+  },
+  "unwatchStar": {
+    "message": "★ Не следить",
+    "description": "Content-script button when product is watched"
+  },
+  "ariaWatch": {
+    "message": "Следить за ценой этого товара",
+    "description": "aria-label for watch button"
+  },
+  "ariaUnwatch": {
+    "message": "Прекратить следить за этим товаром",
+    "description": "aria-label for unwatch button"
+  },
+  "savedPrice": {
+    "message": "Сохранено: $1",
+    "description": "Tooltip after saving a watch",
+    "placeholders": {
+      "price": {
+        "content": "$1",
+        "example": "2 499,00 BYN"
+      }
+    }
+  },
+  "priceDroppedTitle": {
+    "message": "Цена снизилась",
+    "description": "Chrome notification title on price drop"
+  },
+  "noPriceInApi": {
+    "message": "Нет цены в ответе API",
+    "description": "Stored when product API has no min price"
+  },
+  "toggleFailedPrefix": {
+    "message": "Onliner Price Tracker: $1",
+    "description": "Alert prefix when watch toggle fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Missing product key"
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,19 +9,22 @@
   <body>
     <header class="header">
       <div>
-        <h1>Onliner Price Tracker</h1>
-        <p class="sub">Local watches · checks every <span id="intervalLabel">3</span>h</p>
+        <h1 id="extTitle">Onliner Price Tracker</h1>
+        <p class="sub">
+          <span id="subtitleBefore">Локально · проверка каждые</span>
+          <span id="intervalLabel">3</span>
+          <span id="subtitleAfter">ч</span>
+        </p>
       </div>
-      <button type="button" id="checkNow" class="ghost">Check now</button>
+      <button type="button" id="checkNow" class="ghost">Проверить сейчас</button>
     </header>
 
     <main>
       <p id="empty" class="empty" hidden>
-        Open a product on
+        <span id="emptyBefore">Откройте товар на </span>
         <a href="https://catalog.onliner.by" target="_blank" rel="noreferrer"
           >catalog.onliner.by</a
-        >
-        and click <strong>Watch price</strong>.
+        ><span id="emptyAfter"> и нажмите «Следить за ценой».</span>
       </p>
       <ul id="list" class="list"></ul>
     </main>
