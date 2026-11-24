@@ -35,3 +35,32 @@ Only products you explicitly watch are checked. There is no bulk crawl of the ca
 ## Development
 
 Vanilla JS, no build step. Edit files under `src/` and click **Reload** on `chrome://extensions/`.
+
+## Publish to Chrome Web Store
+
+Prepared listing copy, privacy policy, permission justifications, screenshots, and a release zip live under `store/` and `dist/`. Follow the step-by-step upload guide:
+
+→ **[store/CHECKLIST.md](store/CHECKLIST.md)**
+
+| Artifact | Path |
+|----------|------|
+| Release zip (upload this) | `dist/onliner-price-tracker.zip` |
+| Rebuild zip | `./scripts/build-zip.sh` |
+| EN / RU listing text | `store/listing-en.md`, `store/listing-ru.md` |
+| Permission justifications | `store/PERMISSIONS_JUSTIFICATION.md` |
+| Privacy policy (markdown) | `store/privacy-policy.md` |
+| Privacy policy (hostable HTML) | `docs/privacy.html` |
+| Screenshots (1280×800) | `store/screenshots/` |
+
+### Privacy policy URL (GitHub Pages)
+
+1. GitHub repo → **Settings** → **Pages**
+2. Source: **Deploy from a branch**
+3. Branch: `main`, folder: `/docs`
+4. After Pages is live, use:
+
+`https://mostovtsov.github.io/onliner-price-tracker/privacy.html`
+
+(Site root `https://mostovtsov.github.io/onliner-price-tracker/` redirects to the same policy.)
+
+You still need to: register a Chrome Web Store developer account, enable Pages if needed, upload the zip, paste listing fields, and submit for review.

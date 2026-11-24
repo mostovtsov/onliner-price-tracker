@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — Onliner Price Tracker</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --accent: #0284c7;
+        --border: #e2e8f0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        background:
+          radial-gradient(1200px 600px at 10% -10%, #dbeafe 0%, transparent 55%),
+          radial-gradient(900px 500px at 100% 0%, #e0f2fe 0%, transparent 50%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      main {
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 32px 28px 48px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+      }
+      h1 {
+        font-size: 1.75rem;
+        line-height: 1.25;
+        margin: 0 0 8px;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 0.95rem;
+        margin-bottom: 28px;
+      }
+      h2 {
+        font-size: 1.15rem;
+        margin: 28px 0 10px;
+      }
+      p, li { color: var(--text); }
+      ul { padding-left: 1.2rem; }
+      a { color: var(--accent); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+        margin: 12px 0 8px;
+      }
+      th, td {
+        border: 1px solid var(--border);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f8fafc; }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+        background: #f1f5f9;
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+      }
+      footer {
+        margin-top: 36px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy Policy — Onliner Price Tracker</h1>
+      <p class="meta">
+        Last updated: 24 November 2026 (Europe/Minsk)<br />
+        Developer: Alexander Mostovtsov<br />
+        Extension: Onliner Price Tracker (Chrome, Manifest V3)<br />
+        Repository:
+        <a href="https://github.com/mostovtsov/onliner-price-tracker"
+          >github.com/mostovtsov/onliner-price-tracker</a
+        >
+      </p>
+
+      <p>
+        This policy describes what the Onliner Price Tracker Chrome extension
+        (“the Extension”) does with data when you install and use it.
+      </p>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>
+          Watched products and price history are stored
+          <strong>only on your device</strong> in
+          <code>chrome.storage.local</code>.
+        </li>
+        <li>
+          Network requests go <strong>only</strong> to Onliner’s catalog hosts
+          to fetch prices for products <strong>you</strong> chose to watch.
+        </li>
+        <li>
+          The Extension does <strong>not</strong> collect accounts, analytics,
+          advertising IDs, or sell/share personal data with third parties.
+        </li>
+        <li>
+          Price-drop alerts use <strong>Chrome notifications</strong> on your
+          computer.
+        </li>
+      </ul>
+
+      <h2>Data stored on your device</h2>
+      <p>
+        When you click <strong>Watch price</strong> on a product page, the
+        Extension saves in <code>chrome.storage.local</code> (under the key
+        <code>watches</code>):
+      </p>
+      <ul>
+        <li>Product key / identifiers needed to check that product again</li>
+        <li>Title, product URL, optional image URL</li>
+        <li>
+          Currency and price history points (timestamp + amount; capped,
+          currently up to 200 points per product)
+        </li>
+        <li>Last checked time and last known price</li>
+        <li>Optional last error message from a failed check</li>
+      </ul>
+      <p>
+        This data never leaves your browser storage except as needed for the
+        network requests described below. Uninstalling the Extension or clearing
+        extension storage removes it according to Chrome’s normal behavior.
+      </p>
+
+      <h2>Network requests</h2>
+      <p>The Extension contacts:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Host</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>https://catalog.onliner.by/*</code></td>
+            <td>
+              Content script on product pages; optional page/DOM fallback for
+              title/price
+            </td>
+          </tr>
+          <tr>
+            <td><code>https://catalog.api.onliner.by/*</code></td>
+            <td>
+              Background and on-page fetches of public product JSON
+              (<code>/products/{key}</code>), including minimum price
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Requests use ordinary HTTPS fetches without sending cookies for the API
+        call (<code>credentials: "omit"</code> on the product API fetch). Only
+        products you explicitly watch (or the page you currently have open when
+        resolving that product) are queried. There is no bulk crawl of the
+        catalog. Checks run on a timer (about every 3 hours) and can be
+        triggered manually from the popup; requests are spaced (~1.5 seconds
+        between products).
+      </p>
+      <p>
+        No other third-party hosts, analytics endpoints, or tracking pixels are
+        used by the Extension.
+      </p>
+
+      <h2>Notifications</h2>
+      <p>
+        If a new minimum price is lower than the previously stored price for a
+        watched product, the Extension may show a
+        <strong>Chrome notification</strong> on your device (title/message
+        describing the drop). Notification permission is handled by Chrome; you
+        can disable notifications in Chrome settings.
+      </p>
+
+      <h2>What we do not do</h2>
+      <ul>
+        <li>No user accounts or sign-in</li>
+        <li>
+          No collection of your name, email, payment details, or browsing
+          history beyond the product pages/API needed for watches you create
+        </li>
+        <li>
+          No selling, renting, or sharing of personal data with advertisers or
+          data brokers
+        </li>
+        <li>
+          No remote logging of your watch list to servers controlled by the
+          Extension developer
+        </li>
+      </ul>
+
+      <h2>Permissions (why they exist)</h2>
+      <ul>
+        <li><strong>storage</strong> — save watches and history locally</li>
+        <li><strong>alarms</strong> — schedule periodic price checks</li>
+        <li>
+          <strong>notifications</strong> — alert you when a price drops
+        </li>
+        <li>
+          <strong>Host access</strong> to <code>catalog.onliner.by</code> and
+          <code>catalog.api.onliner.by</code> — read product pages and fetch
+          public price data
+        </li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>
+        The Extension is not directed at children under 13 and does not
+        knowingly collect children’s personal information.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        If this policy changes in a material way, the updated text will be
+        published at the same privacy URL (GitHub Pages) and the “Last updated”
+        date will change. Continued use after an update means you accept the
+        revised policy for future use.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions about this policy: open an issue at
+        <a href="https://github.com/mostovtsov/onliner-price-tracker/issues"
+          >github.com/mostovtsov/onliner-price-tracker/issues</a
+        >
+        or contact the repository owner via GitHub.
+      </p>
+
+      <footer>
+        Markdown source:
+        <a
+          href="https://github.com/mostovtsov/onliner-price-tracker/blob/main/store/privacy-policy.md"
+          >store/privacy-policy.md</a
+        >
+      </footer>
+    </main>
+  </body>
+</html>

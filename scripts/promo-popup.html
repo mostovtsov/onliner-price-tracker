@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Onliner Price Tracker — Popup promo</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        width: 1280px;
+        height: 800px;
+        font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+        background: linear-gradient(145deg, #0f172a 0%, #1e3a5f 45%, #0ea5e9 100%);
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 64px;
+        padding: 48px 72px;
+      }
+      .copy {
+        color: #f8fafc;
+        max-width: 420px;
+      }
+      .brand {
+        font-size: 18px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        opacity: 0.85;
+        margin-bottom: 16px;
+      }
+      h1 {
+        font-size: 48px;
+        line-height: 1.15;
+        font-weight: 700;
+        margin-bottom: 18px;
+      }
+      .lead {
+        font-size: 20px;
+        line-height: 1.45;
+        opacity: 0.9;
+      }
+      .badge {
+        display: inline-block;
+        margin-top: 28px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.14);
+        border: 1px solid rgba(255,255,255,0.25);
+        font-size: 14px;
+      }
+      .phone {
+        width: 380px;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 28px 80px rgba(0,0,0,0.35);
+        overflow: hidden;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: 18px 18px 12px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .header h2 { font-size: 16px; }
+      .header p { font-size: 12px; color: #64748b; margin-top: 4px; }
+      .ghost {
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      .item {
+        padding: 14px 18px;
+        border-bottom: 1px solid #f1f5f9;
+      }
+      .item-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .title { font-size: 13px; font-weight: 600; max-width: 220px; }
+      .price { font-size: 14px; font-weight: 700; color: #0369a1; }
+      .drop { color: #15803d; font-size: 11px; font-weight: 600; }
+      canvas {
+        width: 100%;
+        height: 72px;
+        background: #f8fafc;
+        border-radius: 8px;
+      }
+      .footer {
+        padding: 10px 18px 14px;
+        font-size: 11px;
+        color: #64748b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="copy">
+      <div class="brand">Onliner Price Tracker</div>
+      <h1>Watch catalog prices. Get notified on drops.</h1>
+      <p class="lead">
+        Local watches for catalog.onliner.by — history charts in the popup,
+        Chrome alerts when the min price falls.
+      </p>
+      <div class="badge">Works locally · checks every 3 hours</div>
+    </div>
+    <div class="phone">
+      <div class="header">
+        <div>
+          <h2>Onliner Price Tracker</h2>
+          <p>Local watches · checks every 3h</p>
+        </div>
+        <button class="ghost" type="button">Check now</button>
+      </div>
+      <div class="item">
+        <div class="item-top">
+          <div class="title">Apple iPhone 15 128GB Black</div>
+          <div>
+            <div class="price">2&nbsp;499,00 BYN</div>
+            <div class="drop">↓ −120,00</div>
+          </div>
+        </div>
+        <canvas id="c1" width="340" height="72"></canvas>
+      </div>
+      <div class="item">
+        <div class="item-top">
+          <div class="title">Sony WH-1000XM5</div>
+          <div>
+            <div class="price">1&nbsp;099,00 BYN</div>
+          </div>
+        </div>
+        <canvas id="c2" width="340" height="72"></canvas>
+      </div>
+      <div class="footer">2 watched · last check just now</div>
+    </div>
+    <script>
+      function drawChart(id, points, drop) {
+        const c = document.getElementById(id);
+        const ctx = c.getContext("2d");
+        const w = c.width;
+        const h = c.height;
+        const min = Math.min(...points);
+        const max = Math.max(...points);
+        const pad = 8;
+        ctx.clearRect(0, 0, w, h);
+        ctx.strokeStyle = drop ? "#16a34a" : "#0284c7";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        points.forEach((p, i) => {
+          const x = pad + (i / (points.length - 1)) * (w - pad * 2);
+          const y = h - pad - ((p - min) / (max - min || 1)) * (h - pad * 2);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+      drawChart("c1", [2680, 2650, 2620, 2590, 2550, 2499], true);
+      drawChart("c2", [1140, 1120, 1135, 1110, 1105, 1099], false);
+    </script>
+  </body>
+</html>
