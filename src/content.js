@@ -10,6 +10,7 @@
     watchProduct,
     unwatchProduct,
     formatPrice,
+    t,
   } = OnlinerPT;
 
   const BTN_ID = "onliner-pt-watch-btn";
@@ -72,10 +73,10 @@
     btn.hidden = false;
     const watched = await isWatched(ref.key);
     btn.dataset.watched = watched ? "1" : "0";
-    btn.textContent = watched ? "★ Unwatch" : "☆ Watch price";
+    btn.textContent = watched ? t("unwatchStar") : t("watchPrice");
     btn.setAttribute(
       "aria-label",
-      watched ? "Stop watching this product" : "Watch this product price"
+      watched ? t("ariaUnwatch") : t("ariaWatch")
     );
   }
 
@@ -94,13 +95,15 @@
         if (!product) return;
         await watchProduct(product);
         if (product.price != null) {
-          btn.title = `Saved ${formatPrice(product.price, product.currency)}`;
+          btn.title = t("savedPrice", [
+            formatPrice(product.price, product.currency),
+          ]);
         }
       }
       await refreshButton();
     } catch (err) {
       console.error("[OnlinerPT] toggle failed", err);
-      alert("Onliner Price Tracker: " + (err?.message || err));
+      alert(t("toggleFailedPrefix", [String(err?.message || err)]));
     } finally {
       btn.disabled = false;
     }

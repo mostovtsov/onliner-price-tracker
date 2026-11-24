@@ -240,6 +240,37 @@
     return `${formatted} ${currency}`;
   }
 
+  function t(key, substitutions) {
+    try {
+      const msg = chrome.i18n.getMessage(key, substitutions);
+      if (msg) return msg;
+    } catch {
+      /* chrome.i18n unavailable in some test contexts */
+    }
+    return key;
+  }
+
+  /** Russian-style plural picker; EN messages use the same few/many text. */
+  function pluralForm(n) {
+    const abs = Math.abs(Number(n)) || 0;
+    const n10 = abs % 10;
+    const n100 = abs % 100;
+    if (n10 === 1 && n100 !== 11) return "one";
+    if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) return "few";
+    return "many";
+  }
+
+  function tPlural(baseKey, n) {
+    const form = pluralForm(n);
+    const key =
+      form === "one"
+        ? `${baseKey}One`
+        : form === "few"
+          ? `${baseKey}Few`
+          : `${baseKey}Many`;
+    return t(key, [String(n)]);
+  }
+
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -262,6 +293,9 @@
     watchProduct,
     unwatchProduct,
     formatPrice,
+    t,
+    pluralForm,
+    tPlural,
     sleep,
   };
 })(typeof globalThis !== "undefined" ? globalThis : self);

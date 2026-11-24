@@ -8,13 +8,15 @@ Chrome extension (Manifest V3) that watches product prices on [catalog.onliner.b
 2. Open Chrome → `chrome://extensions/`
 3. Enable **Developer mode** (top right).
 4. Click **Load unpacked** and select this project folder (the one that contains `manifest.json`).
-5. Open any product page on `https://catalog.onliner.by/.../.../...` and use the **Watch price** button (bottom-right).
+5. Open any product page on `https://catalog.onliner.by/.../.../...` and use the **Следить за ценой** / **Watch price** button (bottom-right).
 6. Open the extension popup to see watched products and charts. Allow notifications when Chrome asks.
+
+UI strings are localized with `chrome.i18n` (`_locales/ru` default, `_locales/en` optional). Chrome picks the locale from the browser language and falls back to Russian.
 
 ## What it does (v1)
 
-- **Watch / unwatch** on catalog product pages (user-initiated only).
-- **Background checks** via `chrome.alarms` every **3 hours** (also a manual **Check now** in the popup).
+- **Watch / unwatch** (`Следить за ценой` / `Не следить`) on catalog product pages (user-initiated only).
+- **Background checks** via `chrome.alarms` every **3 hours** (also a manual **Проверить сейчас** in the popup).
 - Prices come from the public product API `https://catalog.api.onliner.by/products/{key}` (`prices.price_min`), with DOM/JSON-LD fallback on the page.
 - **History** and watches live in `chrome.storage.local` (up to 200 points per product).
 - **Canvas chart** in the popup (no chart library).

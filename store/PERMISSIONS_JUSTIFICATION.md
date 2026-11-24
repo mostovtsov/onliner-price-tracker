@@ -14,7 +14,7 @@ Paste each single sentence into the corresponding Web Store form field.
 
 | Host permission | Single-sentence justification |
 |-----------------|-------------------------------|
-| **https://catalog.onliner.by/**\* | Injects the Watch price control on catalog product pages and may read page content as a fallback when resolving the current product’s title and price. |
+| **https://catalog.onliner.by/**\* | Injects the «Следить за ценой» / Watch price control on catalog product pages and may read page content as a fallback when resolving the current product’s title and price. |
 | **https://catalog.api.onliner.by/**\* | Fetches public product JSON (including minimum price) for user-watched items during background and manual price checks. |
 
 ## Optional notes for the reviewer (not a form field)

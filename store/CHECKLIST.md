@@ -13,9 +13,9 @@ Do this **after** you have a [Chrome Web Store developer account](https://chrome
    - Privacy URL to paste in the store:
      - `https://mostovtsov.github.io/onliner-price-tracker/privacy.html`
 3. Have ready:
-   - Listing text from `store/listing-en.md` (and optionally `store/listing-ru.md`)
+   - Listing text from `store/listing-ru.md` (primary) and optionally `store/listing-en.md`
    - Permission sentences from `store/PERMISSIONS_JUSTIFICATION.md`
-   - Screenshots from `store/screenshots/` (1280×800 PNGs)
+   - Screenshots from `store/screenshots/` — prefer `*-ru.png` (1280×800)
    - Store icon: `icons/icon128.png` (128×128)
 
 ## 1. Create the item
@@ -28,22 +28,22 @@ Do this **after** you have a [Chrome Web Store developer account](https://chrome
 
 | Field | Source |
 |-------|--------|
-| Language | English (add Russian locale if desired) |
-| Product name / short name | `Onliner Price Tracker` (`store/listing-en.md`) |
-| Summary | Summary block in `store/listing-en.md` (≤132 chars) |
-| Description | Detailed description in `store/listing-en.md` |
+| Language | Russian (primary; add English if desired) |
+| Product name / short name | `Onliner Price Tracker` / `Трекер цен Onliner` (`store/listing-ru.md`) |
+| Summary | Summary block in `store/listing-ru.md` (≤132 chars) |
+| Description | Detailed description in `store/listing-ru.md` |
 | Category | Shopping (or Productivity) |
-| Language | English / Russian as applicable |
+| Language | Russian / English as applicable |
 
-Optional: add a second locale and paste from `store/listing-ru.md`.
+Optional: add English and paste from `store/listing-en.md`.
 
 ## 3. Graphic assets
 
 | Asset | File |
 |-------|------|
 | Store icon (128×128) | `icons/icon128.png` |
-| Screenshot 1 (required) | `store/screenshots/01-popup-chart.png` |
-| Screenshot 2 (recommended) | `store/screenshots/02-watch-button.png` |
+| Screenshot 1 (required) | `store/screenshots/01-popup-chart-ru.png` |
+| Screenshot 2 (recommended) | `store/screenshots/02-watch-button-ru.png` |
 
 Screenshots must be **1280×800** or **640×400**. Placeholders are promotional mockups; replace with live captures later if you want (see `store/SCREENSHOTS.md`).
 
@@ -72,9 +72,10 @@ Paste permission justifications from `store/PERMISSIONS_JUSTIFICATION.md` when t
 
 Only extension runtime files — **not** `store/`, `docs/`, `scripts/`, `.git`, or this checklist:
 
-- `manifest.json`
+- `manifest.json` (`default_locale`: `ru`)
 - `src/` (all extension JS/CSS/HTML)
 - `icons/` (`icon16.png`, `icon32.png`, `icon48.png`, `icon128.png`)
+- `_locales/` (`ru/messages.json`, optional `en/messages.json`)
 
 ## What you still do manually
 

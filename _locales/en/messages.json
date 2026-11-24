@@ -1,0 +1,196 @@
+{
+  "extName": {
+    "message": "Onliner Price Tracker",
+    "description": "Extension name shown in Chrome and the popup"
+  },
+  "extDescription": {
+    "message": "Watch product prices on catalog.onliner.by, keep local history, and get notified on drops.",
+    "description": "Chrome Web Store / manage-extensions description"
+  },
+  "popupSubtitleBefore": {
+    "message": "Local watches · checks every",
+    "description": "Popup header subtitle before the interval number"
+  },
+  "popupSubtitleAfter": {
+    "message": "h",
+    "description": "Popup header subtitle after the interval number (hours)"
+  },
+  "checkNow": {
+    "message": "Check now",
+    "description": "Popup button to run a price check immediately"
+  },
+  "emptyStateBefore": {
+    "message": "Open a product on ",
+    "description": "Empty state text before the catalog link"
+  },
+  "emptyStateAfter": {
+    "message": " and click “Watch price”.",
+    "description": "Empty state text after the catalog link"
+  },
+  "noChange": {
+    "message": "no change",
+    "description": "Delta label when price is unchanged vs first history point"
+  },
+  "noPricePoints": {
+    "message": "No price points yet",
+    "description": "Chart placeholder when history is empty"
+  },
+  "thumbPlaceholder": {
+    "message": "n/a",
+    "description": "Thumbnail placeholder when product has no image"
+  },
+  "neverChecked": {
+    "message": "never",
+    "description": "Shown when a watch has never been checked"
+  },
+  "errorPrefix": {
+    "message": "Error: $1",
+    "description": "Watch card error line",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Onliner API 404"
+      }
+    }
+  },
+  "checkedPrefix": {
+    "message": "Checked: $1",
+    "description": "Watch card last-checked line",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "11/24/2026, 10:00:00 PM"
+      }
+    }
+  },
+  "historyPointsOne": {
+    "message": "$1 point in history",
+    "description": "History count: 1",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "historyPointsFew": {
+    "message": "$1 points in history",
+    "description": "History count: 2–4 (EN uses same as many)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "historyPointsMany": {
+    "message": "$1 points in history",
+    "description": "History count: 0, 5+",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "unwatch": {
+    "message": "Unwatch",
+    "description": "Popup button to remove a watch"
+  },
+  "watchedCountOne": {
+    "message": "$1 watched",
+    "description": "Footer watched count: 1",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "watchedCountFew": {
+    "message": "$1 watched",
+    "description": "Footer watched count: 2–4",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "watchedCountMany": {
+    "message": "$1 watched",
+    "description": "Footer watched count: 5+",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "checking": {
+    "message": "Checking…",
+    "description": "Status while manual check runs"
+  },
+  "checkSummary": {
+    "message": "Checked $1, drops $2",
+    "description": "Status after manual check",
+    "placeholders": {
+      "checked": {
+        "content": "$1",
+        "example": "3"
+      },
+      "drops": {
+        "content": "$2",
+        "example": "1"
+      }
+    }
+  },
+  "checkFailed": {
+    "message": "Check failed",
+    "description": "Generic manual check failure"
+  },
+  "watchPrice": {
+    "message": "☆ Watch price",
+    "description": "Content-script button when product is not watched"
+  },
+  "unwatchStar": {
+    "message": "★ Unwatch",
+    "description": "Content-script button when product is watched"
+  },
+  "ariaWatch": {
+    "message": "Watch this product price",
+    "description": "aria-label for watch button"
+  },
+  "ariaUnwatch": {
+    "message": "Stop watching this product",
+    "description": "aria-label for unwatch button"
+  },
+  "savedPrice": {
+    "message": "Saved $1",
+    "description": "Tooltip after saving a watch",
+    "placeholders": {
+      "price": {
+        "content": "$1",
+        "example": "2,499.00 BYN"
+      }
+    }
+  },
+  "priceDroppedTitle": {
+    "message": "Price dropped",
+    "description": "Chrome notification title on price drop"
+  },
+  "noPriceInApi": {
+    "message": "No price in API response",
+    "description": "Stored when product API has no min price"
+  },
+  "toggleFailedPrefix": {
+    "message": "Onliner Price Tracker: $1",
+    "description": "Alert prefix when watch toggle fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Missing product key"
+      }
+    }
+  }
+}
