@@ -6,13 +6,15 @@ const {
   CHECK_PERIOD_MINUTES,
   FETCH_GAP_MS,
   getWatches,
-  setWatches,
+  updateWatchIfPresent,
   appendHistory,
   fetchProduct,
   sleep,
   formatPrice,
   t,
 } = OnlinerPT;
+
+let activeCheckPromise = null;
 
 async function ensureAlarm() {
   const existing = await chrome.alarms.get(CHECK_ALARM);
@@ -37,62 +39,99 @@ async function notifyPriceDrop(watch, previous, next) {
   });
 }
 
-async function checkAllWatches({ notify = true } = {}) {
-  const watches = await getWatches();
-  const keys = Object.keys(watches);
+async function runCheckAllWatches({ notify = true } = {}) {
+  const initialWatches = await getWatches();
+  const keys = Object.keys(initialWatches);
   if (!keys.length) return { checked: 0, drops: 0 };
 
+  let checked = 0;
   let drops = 0;
+  let didFetch = false;
+
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
-    const watch = watches[key];
+
+    // Skip products that were unwatched before their turn in this run.
+    const beforeFetch = await getWatches();
+    if (!beforeFetch[key]) continue;
+
+    if (didFetch) {
+      await sleep(FETCH_GAP_MS);
+      const afterGap = await getWatches();
+      if (!afterGap[key]) continue;
+    }
+    didFetch = true;
+
     try {
       const snapshot = await fetchProduct(key);
-      if (snapshot.price == null) {
-        watch.lastCheckedAt = Date.now();
-        watch.lastError = t("noPriceInApi");
-        continue;
-      }
+      let dropInfo = null;
 
-      const previous =
-        watch.lastPrice != null
-          ? watch.lastPrice
-          : watch.history?.length
-            ? watch.history[watch.history.length - 1].price
-            : null;
+      const result = await updateWatchIfPresent(key, (watch) => {
+        if (snapshot.price == null) {
+          watch.lastCheckedAt = Date.now();
+          watch.lastError = t("noPriceInApi");
+          return watch;
+        }
 
-      watch.title = snapshot.title || watch.title;
-      watch.url = snapshot.url || watch.url;
-      watch.image = snapshot.image || watch.image;
-      watch.currency = snapshot.currency || watch.currency || "BYN";
-      watch.history = appendHistory(watch, snapshot.price, snapshot.fetchedAt);
-      watch.lastCheckedAt = snapshot.fetchedAt;
-      watch.lastError = null;
+        const previous =
+          watch.lastPrice != null
+            ? watch.lastPrice
+            : watch.history?.length
+              ? watch.history[watch.history.length - 1].price
+              : null;
 
-      if (
-        notify &&
-        previous != null &&
-        snapshot.price < previous - 0.009
-      ) {
+        watch.title = snapshot.title || watch.title;
+        watch.url = snapshot.url || watch.url;
+        watch.image = snapshot.image || watch.image;
+        watch.currency = snapshot.currency || watch.currency || "BYN";
+        watch.history = appendHistory(watch, snapshot.price, snapshot.fetchedAt);
+        watch.lastCheckedAt = snapshot.fetchedAt;
+        watch.lastError = null;
+        watch.lastPrice = snapshot.price;
+
+        if (
+          notify &&
+          previous != null &&
+          snapshot.price < previous - 0.009
+        ) {
+          dropInfo = {
+            watch: { ...watch },
+            previous,
+            next: snapshot.price,
+          };
+        }
+        return watch;
+      });
+
+      if (result.removed) continue;
+
+      checked += 1;
+      if (dropInfo) {
         drops += 1;
-        await notifyPriceDrop(watch, previous, snapshot.price);
+        await notifyPriceDrop(dropInfo.watch, dropInfo.previous, dropInfo.next);
       }
-
-      watch.lastPrice = snapshot.price;
     } catch (err) {
-      watch.lastCheckedAt = Date.now();
-      watch.lastError = String(err?.message || err);
+      const result = await updateWatchIfPresent(key, (watch) => {
+        watch.lastCheckedAt = Date.now();
+        watch.lastError = String(err?.message || err);
+        return watch;
+      });
+      if (!result.removed) {
+        checked += 1;
+      }
       console.warn("[OnlinerPT] check failed", key, err);
-    }
-
-    watches[key] = watch;
-    if (i < keys.length - 1) {
-      await sleep(FETCH_GAP_MS);
     }
   }
 
-  await setWatches(watches);
-  return { checked: keys.length, drops };
+  return { checked, drops };
+}
+
+function checkAllWatches(options = {}) {
+  if (activeCheckPromise) return activeCheckPromise;
+  activeCheckPromise = runCheckAllWatches(options).finally(() => {
+    activeCheckPromise = null;
+  });
+  return activeCheckPromise;
 }
 
 chrome.runtime.onInstalled.addListener(async () => {

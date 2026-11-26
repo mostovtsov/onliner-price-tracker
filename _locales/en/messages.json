@@ -183,6 +183,24 @@
     "message": "No price in API response",
     "description": "Stored when product API has no min price"
   },
+  "apiTimeout": {
+    "message": "API request timed out",
+    "description": "Error shown when catalog API request times out"
+  },
+  "apiHttpError": {
+    "message": "Onliner API (status $1)",
+    "description": "Error shown when catalog API responds with a non-OK HTTP status",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "503"
+      }
+    }
+  },
+  "apiNetworkError": {
+    "message": "Network error reaching API",
+    "description": "Error shown when catalog API request fails due to a network error"
+  },
   "toggleFailedPrefix": {
     "message": "Onliner Price Tracker: $1",
     "description": "Alert prefix when watch toggle fails",
