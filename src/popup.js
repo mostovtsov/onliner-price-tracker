@@ -10,6 +10,7 @@
     getSettings,
     setSettings,
     getWatches,
+    clearUnreadDropKeys,
     unwatchProduct,
     setWatchTargetPrice,
     computeChartLayout,
@@ -75,7 +76,28 @@
     populateIntervalOptions();
   }
 
+  async function clearDropBadge() {
+    try {
+      await chrome.runtime.sendMessage({ type: "CLEAR_BADGE" });
+      return;
+    } catch {
+      /* background may be inactive or unavailable in tests */
+    }
+    try {
+      await clearUnreadDropKeys();
+      if (chrome.action && typeof chrome.action.setBadgeText === "function") {
+        await chrome.action.setBadgeText({ text: "" });
+      }
+      if (chrome.action && typeof chrome.action.setTitle === "function") {
+        await chrome.action.setTitle({ title: t("extName") });
+      }
+    } catch {
+      /* ignore badge clear fallback errors */
+    }
+  }
+
   applyStaticI18n();
+  clearDropBadge();
 
   async function syncSettingsUi() {
     try {
@@ -482,6 +504,9 @@
         notify: true,
       });
       if (!res?.ok) throw new Error(res?.error || t("checkFailed"));
+      if (res.drops > 0) {
+        await clearDropBadge();
+      }
       await render({ preserveStatus: true });
       setStatusFeedback(
         res.unavailable > 0

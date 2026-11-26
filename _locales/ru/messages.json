@@ -416,5 +416,39 @@
         "example": "Invalid format"
       }
     }
+  },
+  "apiInvalidResponse": {
+    "message": "Некорректный ответ API Onliner",
+    "description": "Error shown when catalog API responds with invalid JSON"
+  },
+  "badgeDropsOne": {
+    "message": "$1 снижение цены",
+    "description": "Action icon tooltip when 1 watched product had an unread price drop or target hit",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "1"
+      }
+    }
+  },
+  "badgeDropsFew": {
+    "message": "$1 снижения цены",
+    "description": "Action icon tooltip when 2–4 watched products had unread price drops or target hits",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "badgeDropsMany": {
+    "message": "$1 снижений цены",
+    "description": "Action icon tooltip when 5+ watched products had unread price drops or target hits",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
   }
 }

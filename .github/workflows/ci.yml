@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Syntax check source scripts
+        run: |
+          for file in src/*.js; do
+            node --check "$file"
+          done
+
+      - name: Run tests
+        run: node --test
+
+      - name: Build release zip
+        run: |
+          ./scripts/build-zip.sh
+          test -s dist/onliner-price-tracker.zip
+
+      - name: Upload release zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: onliner-price-tracker-zip
+          path: dist/onliner-price-tracker.zip
+          if-no-files-found: error

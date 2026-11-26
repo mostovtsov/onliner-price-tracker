@@ -6,9 +6,12 @@
     parseProductPageUrl,
     scrapeProductFromDom,
     fetchProduct,
+    getWatches,
     isWatched,
     watchProduct,
     unwatchProduct,
+    updateWatchIfPresent,
+    appendHistory,
     formatPrice,
     t,
   } = OnlinerPT;
@@ -53,6 +56,13 @@
     return btn;
   }
 
+  /**
+   * Product resolution order on a catalog page (user-initiated watch):
+   * 1. Public catalog JSON API (`catalog.api.onliner.by/products/{key}`) via
+   *    shared timeout/retry helpers (`fetchProduct`).
+   * 2. Live page DOM fallback (`scrapeProductFromDom`: JSON-LD -> meta/microdata
+   *    -> catalog DOM price selectors) when the API fails or changes shape.
+   */
   async function resolveProduct(ref) {
     if (!ref) return null;
 
@@ -62,25 +72,88 @@
       title: dom.title || ref.key,
       price: dom.price,
       currency: dom.currency || "BYN",
-      url: ref.url,
-      image: null,
+      url: dom.url || ref.url,
+      image: dom.image || null,
+      unavailable: dom.price == null && Boolean(dom.unavailable),
+      unavailableReason:
+        dom.price == null && dom.unavailable ? "no_offers" : null,
       fetchedAt: Date.now(),
     };
 
     try {
       const api = await fetchProduct(ref.key, CONTENT_FETCH_OPTIONS);
-      snapshot = {
-        ...snapshot,
-        ...api,
-        url: api.url || ref.url,
-        title: api.title || snapshot.title,
-        price: api.price ?? snapshot.price,
-      };
+      if (api.price != null) {
+        snapshot = {
+          ...snapshot,
+          ...api,
+          url: api.url || snapshot.url || ref.url,
+          title: api.title && api.title !== ref.key ? api.title : snapshot.title,
+          image: api.image || snapshot.image,
+          price: api.price,
+          unavailable: false,
+          unavailableReason: null,
+        };
+      } else if (api.shapeChanged && snapshot.price != null) {
+        snapshot = {
+          ...snapshot,
+          url: api.url || snapshot.url || ref.url,
+          title: api.title && api.title !== ref.key ? api.title : snapshot.title,
+          image: api.image || snapshot.image,
+          unavailable: false,
+          unavailableReason: null,
+        };
+      } else if (snapshot.price != null) {
+        snapshot = {
+          ...snapshot,
+          ...api,
+          url: api.url || snapshot.url || ref.url,
+          title: api.title && api.title !== ref.key ? api.title : snapshot.title,
+          image: api.image || snapshot.image,
+          price: snapshot.price,
+          unavailable: false,
+          unavailableReason: null,
+        };
+      } else {
+        snapshot = {
+          ...snapshot,
+          ...api,
+          url: api.url || snapshot.url || ref.url,
+          title: api.title && api.title !== ref.key ? api.title : snapshot.title,
+          image: api.image || snapshot.image,
+        };
+      }
     } catch (err) {
       console.warn("[OnlinerPT] API fetch failed, using DOM", err);
     }
 
     return snapshot;
+  }
+
+  /**
+   * When the user visits an already-watched product page whose last background
+   * check failed, opportunistically recover the current price from the already
+   * loaded DOM (zero extra network requests).
+   */
+  async function recoverErroredWatchFromDom(ref, watch) {
+    if (!ref || !watch || !watch.lastError) return;
+    const dom = scrapeProductFromDom(document);
+    if (dom.price == null) return;
+    const now = Date.now();
+    await updateWatchIfPresent(ref.key, (current) => {
+      if (!current.lastError) return null;
+      current.title = dom.title || current.title;
+      current.url = dom.url || current.url || ref.url;
+      current.image = dom.image || current.image;
+      current.currency = dom.currency || current.currency || "BYN";
+      current.unavailable = false;
+      current.unavailableSince = null;
+      current.unavailableReason = null;
+      current.lastError = null;
+      current.lastCheckedAt = now;
+      current.lastPrice = dom.price;
+      current.history = appendHistory(current, dom.price, now);
+      return current;
+    });
   }
 
   async function refreshButton() {
@@ -103,11 +176,17 @@
       return;
     }
 
-    const watched = await isWatched(ref.key);
+    const watches = await getWatches();
+    const watch = watches[ref.key] || null;
+    const watched = Boolean(watch);
     // Drop stale async updates if the user already navigated elsewhere.
     if (disposed || seq !== refreshSeq) return;
     const latestRef = currentProductRef();
     if (!latestRef || latestRef.key !== ref.key) return;
+
+    if (watch?.lastError) {
+      recoverErroredWatchFromDom(ref, watch).catch(() => {});
+    }
 
     const btn = ensureButton();
     if (btn.dataset.productKey !== ref.key) {
