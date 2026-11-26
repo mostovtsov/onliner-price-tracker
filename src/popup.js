@@ -210,21 +210,29 @@
     requestAnimationFrame(() => drawChart(canvas, watch.history));
   }
 
-  async function render() {
+  let renderSeq = 0;
+  let isChecking = false;
+
+  async function render({ preserveStatus = false } = {}) {
+    const seq = ++renderSeq;
     const watches = await getWatches();
+    if (seq !== renderSeq) return;
     const items = Object.values(watches).sort(
       (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
     );
     listEl.innerHTML = "";
     emptyEl.hidden = items.length > 0;
     items.forEach(renderWatch);
-    statusEl.textContent = items.length
-      ? tPlural("watchedCount", items.length)
-      : "";
+    if (!preserveStatus && !isChecking) {
+      statusEl.textContent = items.length
+        ? tPlural("watchedCount", items.length)
+        : "";
+    }
   }
 
   checkBtn.addEventListener("click", async () => {
     checkBtn.disabled = true;
+    isChecking = true;
     statusEl.textContent = t("checking");
     try {
       const res = await chrome.runtime.sendMessage({
@@ -232,20 +240,23 @@
         notify: true,
       });
       if (!res?.ok) throw new Error(res?.error || t("checkFailed"));
+      await render({ preserveStatus: true });
       statusEl.textContent = t("checkSummary", [
         String(res.checked),
         String(res.drops),
       ]);
-      await render();
     } catch (err) {
       statusEl.textContent = String(err?.message || err);
     } finally {
+      isChecking = false;
       checkBtn.disabled = false;
     }
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.watches) render();
+    if (area === "local" && changes.watches) {
+      render({ preserveStatus: isChecking });
+    }
   });
 
   render();

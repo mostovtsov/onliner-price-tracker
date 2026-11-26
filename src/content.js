@@ -3,7 +3,7 @@
   "use strict";
 
   const {
-    parseProductUrl,
+    parseProductPageUrl,
     scrapeProductFromDom,
     fetchProduct,
     isWatched,
@@ -14,26 +14,46 @@
   } = OnlinerPT;
 
   const BTN_ID = "onliner-pt-watch-btn";
+  const URL_POLL_MS = 1000;
+  const CONTENT_FETCH_OPTIONS = {
+    timeoutMs: 6000,
+    maxRetries: 1,
+    retryDelayMs: 500,
+  };
+
+  let lastHref = location.href;
+  let refreshSeq = 0;
+  let refreshTimer = null;
+  let disposed = false;
+
+  function isExtensionAlive() {
+    try {
+      return Boolean(chrome?.runtime?.id);
+    } catch {
+      return false;
+    }
+  }
 
   function currentProductRef() {
-    return parseProductUrl(location.href);
+    return parseProductPageUrl(location.href);
   }
 
   function ensureButton() {
     let btn = document.getElementById(BTN_ID);
-    if (btn) return btn;
+    if (btn && btn.isConnected) return btn;
 
-    btn = document.createElement("button");
-    btn.id = BTN_ID;
-    btn.type = "button";
-    btn.className = "onliner-pt-btn";
-    btn.addEventListener("click", onToggle);
-    document.documentElement.appendChild(btn);
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = BTN_ID;
+      btn.type = "button";
+      btn.className = "onliner-pt-btn";
+      btn.addEventListener("click", onToggle);
+    }
+    (document.documentElement || document.body).appendChild(btn);
     return btn;
   }
 
-  async function resolveProduct() {
-    const ref = currentProductRef();
+  async function resolveProduct(ref) {
     if (!ref) return null;
 
     const dom = scrapeProductFromDom(document);
@@ -48,7 +68,7 @@
     };
 
     try {
-      const api = await fetchProduct(ref.key);
+      const api = await fetchProduct(ref.key, CONTENT_FETCH_OPTIONS);
       snapshot = {
         ...snapshot,
         ...api,
@@ -64,14 +84,37 @@
   }
 
   async function refreshButton() {
-    const ref = currentProductRef();
-    const btn = ensureButton();
-    if (!ref) {
-      btn.hidden = true;
+    if (disposed) return;
+    if (!isExtensionAlive()) {
+      cleanup();
       return;
     }
-    btn.hidden = false;
+
+    const seq = ++refreshSeq;
+    const ref = currentProductRef();
+    const existingBtn = document.getElementById(BTN_ID);
+
+    if (!ref) {
+      if (existingBtn) {
+        existingBtn.hidden = true;
+        delete existingBtn.dataset.productKey;
+        existingBtn.removeAttribute("title");
+      }
+      return;
+    }
+
     const watched = await isWatched(ref.key);
+    // Drop stale async updates if the user already navigated elsewhere.
+    if (disposed || seq !== refreshSeq) return;
+    const latestRef = currentProductRef();
+    if (!latestRef || latestRef.key !== ref.key) return;
+
+    const btn = ensureButton();
+    if (btn.dataset.productKey !== ref.key) {
+      btn.dataset.productKey = ref.key;
+      btn.removeAttribute("title");
+    }
+    btn.hidden = false;
     btn.dataset.watched = watched ? "1" : "0";
     btn.textContent = watched ? t("unwatchStar") : t("watchPrice");
     btn.setAttribute(
@@ -90,11 +133,14 @@
 
       if (await isWatched(ref.key)) {
         await unwatchProduct(ref.key);
+        if (currentProductRef()?.key === ref.key) {
+          btn.removeAttribute("title");
+        }
       } else {
-        const product = await resolveProduct();
+        const product = await resolveProduct(ref);
         if (!product) return;
         await watchProduct(product);
-        if (product.price != null) {
+        if (product.price != null && currentProductRef()?.key === ref.key) {
           btn.title = t("savedPrice", [
             formatPrice(product.price, product.currency),
           ]);
@@ -109,28 +155,102 @@
     }
   }
 
-  function maybeRefresh() {
-    refreshButton().catch((err) =>
-      console.warn("[OnlinerPT] refresh failed", err)
-    );
+  function scheduleRefresh() {
+    if (disposed || refreshTimer != null) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      refreshButton().catch((err) => {
+        if (!isExtensionAlive()) {
+          cleanup();
+          return;
+        }
+        console.warn("[OnlinerPT] refresh failed", err);
+      });
+    }, 0);
   }
 
-  // SPA navigations on Onliner
-  let lastHref = location.href;
-  const observer = new MutationObserver(() => {
-    if (location.href !== lastHref) {
-      lastHref = location.href;
-      maybeRefresh();
+  function handleRouteOrDomChange() {
+    if (disposed) return;
+    const href = location.href;
+    if (href !== lastHref) {
+      lastHref = href;
+      scheduleRefresh();
+      return;
     }
-  });
+    // Re-inject button if an SPA re-render removed it while on a product page.
+    if (currentProductRef() && !document.getElementById(BTN_ID)) {
+      scheduleRefresh();
+    }
+  }
+
+  function onClickDeferredCheck() {
+    if (disposed) return;
+    setTimeout(handleRouteOrDomChange, 0);
+    setTimeout(handleRouteOrDomChange, 150);
+  }
+
+  function onVisibilityChange() {
+    if (!document.hidden) handleRouteOrDomChange();
+  }
+
+  function onPageShow() {
+    lastHref = location.href;
+    scheduleRefresh();
+  }
+
+  function onStorageChanged(changes, area) {
+    if (area === "local" && changes.watches) scheduleRefresh();
+  }
+
+  const observer = new MutationObserver(handleRouteOrDomChange);
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.watches) maybeRefresh();
-  });
+  window.addEventListener("popstate", handleRouteOrDomChange);
+  window.addEventListener("hashchange", handleRouteOrDomChange);
+  window.addEventListener("pageshow", onPageShow);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  document.addEventListener("click", onClickDeferredCheck, true);
 
-  maybeRefresh();
+  const nav = typeof window !== "undefined" ? window.navigation : null;
+  if (nav && typeof nav.addEventListener === "function") {
+    nav.addEventListener("currententrychange", handleRouteOrDomChange);
+    nav.addEventListener("navigatesuccess", handleRouteOrDomChange);
+  }
+
+  // Fallback for MAIN-world history.pushState/replaceState without DOM churn.
+  const pollTimer = setInterval(() => {
+    if (!document.hidden) handleRouteOrDomChange();
+  }, URL_POLL_MS);
+
+  chrome.storage.onChanged.addListener(onStorageChanged);
+
+  function cleanup() {
+    if (disposed) return;
+    disposed = true;
+    if (refreshTimer != null) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
+    clearInterval(pollTimer);
+    observer.disconnect();
+    window.removeEventListener("popstate", handleRouteOrDomChange);
+    window.removeEventListener("hashchange", handleRouteOrDomChange);
+    window.removeEventListener("pageshow", onPageShow);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    document.removeEventListener("click", onClickDeferredCheck, true);
+    if (nav && typeof nav.removeEventListener === "function") {
+      nav.removeEventListener("currententrychange", handleRouteOrDomChange);
+      nav.removeEventListener("navigatesuccess", handleRouteOrDomChange);
+    }
+    try {
+      chrome.storage.onChanged.removeListener(onStorageChanged);
+    } catch {
+      /* ignore if context already torn down */
+    }
+  }
+
+  scheduleRefresh();
 })();

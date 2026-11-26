@@ -183,6 +183,24 @@
     "message": "Нет цены в ответе API",
     "description": "Stored when product API has no min price"
   },
+  "apiTimeout": {
+    "message": "Превышено время ожидания ответа API",
+    "description": "Error shown when catalog API request times out"
+  },
+  "apiHttpError": {
+    "message": "API Onliner (код $1)",
+    "description": "Error shown when catalog API responds with a non-OK HTTP status",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "503"
+      }
+    }
+  },
+  "apiNetworkError": {
+    "message": "Сетевая ошибка при обращении к API",
+    "description": "Error shown when catalog API request fails due to a network error"
+  },
   "toggleFailedPrefix": {
     "message": "Onliner Price Tracker: $1",
     "description": "Alert prefix when watch toggle fails",

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "default_locale": "ru",
   "name": "__MSG_extName__",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "__MSG_extDescription__",
   "permissions": ["storage", "alarms", "notifications"],
   "host_permissions": [
@@ -23,13 +23,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://catalog.onliner.by/*/*/*"],
-      "exclude_matches": [
-        "https://catalog.onliner.by/*/*/*/reviews*",
-        "https://catalog.onliner.by/*/*/*/prices*",
-        "https://catalog.onliner.by/*/*/*/used*",
-        "https://catalog.onliner.by/*/*/*/forum*"
-      ],
+      "matches": ["https://catalog.onliner.by/*"],
       "js": ["src/shared.js", "src/content.js"],
       "css": ["src/content.css"],
       "run_at": "document_idle"
