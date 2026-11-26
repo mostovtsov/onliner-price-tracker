@@ -210,5 +210,211 @@
         "example": "Missing product key"
       }
     }
+  },
+  "targetPriceLabel": {
+    "message": "Цель",
+    "description": "Label before target price input on a watch card"
+  },
+  "targetPricePlaceholder": {
+    "message": "Цена ≤",
+    "description": "Placeholder for target price input"
+  },
+  "targetPriceSave": {
+    "message": "ОК",
+    "description": "Button to save target price"
+  },
+  "targetPriceClear": {
+    "message": "Сбросить цель",
+    "description": "Tooltip and aria-label for clearing target price"
+  },
+  "targetPriceInvalid": {
+    "message": "Введите корректную цену больше 0",
+    "description": "Validation error when target price input is invalid"
+  },
+  "targetPriceSaved": {
+    "message": "Целевая цена сохранена: $1",
+    "description": "Status message when target price is saved",
+    "placeholders": {
+      "price": {
+        "content": "$1",
+        "example": "1 500,00 BYN"
+      }
+    }
+  },
+  "targetPriceCleared": {
+    "message": "Целевая цена сброшена",
+    "description": "Status message when target price is cleared"
+  },
+  "targetPriceReachedBadge": {
+    "message": "Цель достигнута",
+    "description": "Badge shown when current price is at or below target price"
+  },
+  "targetPriceReachedTitle": {
+    "message": "Достигнута целевая цена",
+    "description": "Chrome notification title when target price is reached"
+  },
+  "targetPriceReachedBody": {
+    "message": "Цена $1 (цель: $2)",
+    "description": "Chrome notification body line when target price is reached",
+    "placeholders": {
+      "price": {
+        "content": "$1",
+        "example": "1 450,00 BYN"
+      },
+      "target": {
+        "content": "$2",
+        "example": "1 500,00 BYN"
+      }
+    }
+  },
+  "productUnavailableTitle": {
+    "message": "Товар недоступен",
+    "description": "Chrome notification title when a watched product becomes unavailable or delisted"
+  },
+  "productDelistedBody": {
+    "message": "Товар удалён из каталога или снят с продажи",
+    "description": "Notification body when product returns 404/410 from API"
+  },
+  "productNoOffersBody": {
+    "message": "Нет активных предложений в каталоге",
+    "description": "Notification body when product has no active offers or price in API"
+  },
+  "statusUnavailable": {
+    "message": "Нет в наличии",
+    "description": "Status badge on watch card when product has no active offers"
+  },
+  "statusDelisted": {
+    "message": "Снят с продажи",
+    "description": "Status badge on watch card when product was removed from catalog (404)"
+  },
+  "checkSummaryWithUnavailable": {
+    "message": "Проверено: $1, снижений: $2, недоступно: $3",
+    "description": "Status after manual check when unavailable products were found",
+    "placeholders": {
+      "checked": {
+        "content": "$1",
+        "example": "3"
+      },
+      "drops": {
+        "content": "$2",
+        "example": "1"
+      },
+      "unavailable": {
+        "content": "$3",
+        "example": "1"
+      }
+    }
+  },
+  "intervalOptionHours": {
+    "message": "$1 ч",
+    "description": "Option label in check interval selector",
+    "placeholders": {
+      "hours": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "intervalSelectAria": {
+    "message": "Интервал автоматической проверки",
+    "description": "aria-label for check interval selector"
+  },
+  "intervalUpdated": {
+    "message": "Интервал проверки: $1 ч",
+    "description": "Status message after changing check interval",
+    "placeholders": {
+      "hours": {
+        "content": "$1",
+        "example": "6"
+      }
+    }
+  },
+  "exportBtn": {
+    "message": "Экспорт",
+    "description": "Button to export watches and history as JSON"
+  },
+  "importBtn": {
+    "message": "Импорт",
+    "description": "Button to import watches and history from JSON"
+  },
+  "exportSuccess": {
+    "message": "Экспортировано товаров: $1",
+    "description": "Status message after exporting backup JSON",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "exportFailed": {
+    "message": "Ошибка экспорта: $1",
+    "description": "Status message when export fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Storage error"
+      }
+    }
+  },
+  "importConfirmPrompt": {
+    "message": "В файле товаров: $1. Объединить с текущими или заменить?",
+    "description": "Inline confirmation prompt before importing JSON backup",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importMergeBtn": {
+    "message": "Объединить",
+    "description": "Button to merge imported backup with existing watches"
+  },
+  "importReplaceBtn": {
+    "message": "Заменить",
+    "description": "Button to replace existing watches with imported backup"
+  },
+  "importCancelBtn": {
+    "message": "Отмена",
+    "description": "Button to cancel import confirmation"
+  },
+  "importSuccessMerge": {
+    "message": "Импортировано (объединение): $1",
+    "description": "Status message after merge import",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importSuccessReplace": {
+    "message": "Импортировано (замена): $1",
+    "description": "Status message after replace import",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importInvalidJson": {
+    "message": "Некорректный JSON-файл",
+    "description": "Error when imported file is not valid JSON"
+  },
+  "importInvalidSchema": {
+    "message": "Некорректный формат резервной копии",
+    "description": "Error when imported JSON fails schema validation"
+  },
+  "importFailed": {
+    "message": "Ошибка импорта: $1",
+    "description": "Generic import failure message",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Invalid format"
+      }
+    }
   }
 }

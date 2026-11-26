@@ -3,11 +3,23 @@ importScripts("shared.js");
 
 const {
   CHECK_ALARM,
-  CHECK_PERIOD_MINUTES,
+  SETTINGS_KEY,
   FETCH_GAP_MS,
+  isCatalogOnlinerUrl,
+  parseProductUrl,
+  getSettings,
+  setSettings,
+  getLastCheckAt,
+  setLastCheckAt,
+  isCheckStale,
+  parseNotificationKey,
+  saveNotificationTarget,
+  consumeNotificationTarget,
+  removeNotificationTarget,
   getWatches,
   updateWatchIfPresent,
   appendHistory,
+  evaluatePriceAlert,
   fetchProduct,
   sleep,
   formatPrice,
@@ -15,37 +27,195 @@ const {
 } = OnlinerPT;
 
 let activeCheckPromise = null;
+let activeStaleCheckPromise = null;
 
-async function ensureAlarm() {
+async function ensureAlarm({ forceReschedule = false } = {}) {
+  const { checkIntervalHours } = await getSettings();
+  const periodInMinutes = checkIntervalHours * 60;
   const existing = await chrome.alarms.get(CHECK_ALARM);
-  if (!existing) {
+  if (
+    forceReschedule ||
+    !existing ||
+    existing.periodInMinutes !== periodInMinutes
+  ) {
+    if (existing && typeof chrome.alarms.clear === "function") {
+      await chrome.alarms.clear(CHECK_ALARM);
+    }
     chrome.alarms.create(CHECK_ALARM, {
-      delayInMinutes: 1,
-      periodInMinutes: CHECK_PERIOD_MINUTES,
+      delayInMinutes: periodInMinutes,
+      periodInMinutes,
     });
   }
+  return { checkIntervalHours, periodInMinutes };
+}
+
+async function createProductNotification(notificationId, watch, { title, message, priority = 2 }) {
+  const safeUrl =
+    isCatalogOnlinerUrl(watch?.url) || "https://catalog.onliner.by/";
+  await saveNotificationTarget(notificationId, {
+    key: watch?.key || null,
+    url: safeUrl,
+  });
+  await chrome.notifications.create(notificationId, {
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+    title,
+    message,
+    priority,
+  });
+  return notificationId;
 }
 
 async function notifyPriceDrop(watch, previous, next) {
   const drop = previous - next;
   const title = t("priceDroppedTitle");
   const message = `${watch.title}\n${formatPrice(previous, watch.currency)} → ${formatPrice(next, watch.currency)} (−${formatPrice(drop, watch.currency)})`;
-  await chrome.notifications.create(`drop-${watch.key}-${Date.now()}`, {
-    type: "basic",
-    iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+  return createProductNotification(`drop-${watch.key}-${Date.now()}`, watch, {
     title,
     message,
     priority: 2,
   });
 }
 
+async function notifyTargetPriceReached(watch, next) {
+  const title = t("targetPriceReachedTitle");
+  const body = t("targetPriceReachedBody", [
+    formatPrice(next, watch.currency),
+    formatPrice(watch.targetPrice, watch.currency),
+  ]);
+  const message = `${watch.title}\n${body}`;
+  return createProductNotification(`target-${watch.key}-${Date.now()}`, watch, {
+    title,
+    message,
+    priority: 2,
+  });
+}
+
+async function notifyProductUnavailable(watch, reason) {
+  const title = t("productUnavailableTitle");
+  const body =
+    reason === "delisted"
+      ? t("productDelistedBody")
+      : t("productNoOffersBody");
+  const message = `${watch.title}\n${body}`;
+  return createProductNotification(
+    `delisted-${watch.key}-${Date.now()}`,
+    watch,
+    {
+      title,
+      message,
+      priority: 1,
+    }
+  );
+}
+
+function stripHash(urlString) {
+  try {
+    const u = new URL(urlString);
+    u.hash = "";
+    return u.href.replace(/\/$/, "");
+  } catch {
+    return urlString;
+  }
+}
+
+async function openOrFocusProductUrl(targetUrl, productKey = null) {
+  const safeUrl = isCatalogOnlinerUrl(targetUrl);
+  if (!safeUrl || !chrome.tabs) {
+    return { opened: false, focused: false, url: null };
+  }
+
+  const targetRef = parseProductUrl(safeUrl);
+  const normalizedTarget = stripHash(safeUrl);
+
+  if (typeof chrome.tabs.query === "function") {
+    try {
+      const tabs = await chrome.tabs.query({
+        url: "https://catalog.onliner.by/*",
+      });
+      const existing = (tabs || []).find((tab) => {
+        if (!tab || tab.id == null || !tab.url) return false;
+        const tabRef = parseProductUrl(tab.url);
+        if (targetRef && tabRef) {
+          if (!tabRef.subpage && tabRef.url === targetRef.url) return true;
+          if (productKey && !tabRef.subpage && tabRef.key === productKey) {
+            return true;
+          }
+        }
+        return stripHash(tab.url) === normalizedTarget;
+      });
+
+      if (existing && typeof chrome.tabs.update === "function") {
+        await chrome.tabs.update(existing.id, { active: true });
+        if (
+          existing.windowId != null &&
+          chrome.windows &&
+          typeof chrome.windows.update === "function"
+        ) {
+          try {
+            await chrome.windows.update(existing.windowId, { focused: true });
+          } catch {
+            /* ignore window focus errors */
+          }
+        }
+        return {
+          opened: true,
+          focused: true,
+          tabId: existing.id,
+          url: safeUrl,
+        };
+      }
+    } catch {
+      /* fallback to tabs.create if query fails */
+    }
+  }
+
+  if (typeof chrome.tabs.create === "function") {
+    const created = await chrome.tabs.create({ url: safeUrl });
+    return {
+      opened: true,
+      focused: false,
+      tabId: created?.id ?? null,
+      url: safeUrl,
+    };
+  }
+
+  return { opened: false, focused: false, url: safeUrl };
+}
+
+async function handleNotificationClick(notificationId) {
+  const saved = await consumeNotificationTarget(notificationId);
+  let key = saved?.key || parseNotificationKey(notificationId);
+  let url = saved?.url || null;
+
+  if (!url && key) {
+    const watches = await getWatches();
+    url = isCatalogOnlinerUrl(watches[key]?.url) || null;
+  }
+
+  if (chrome.notifications && typeof chrome.notifications.clear === "function") {
+    try {
+      await chrome.notifications.clear(notificationId);
+    } catch {
+      /* ignore clear failures */
+    }
+  }
+
+  if (!url) {
+    return { opened: false, focused: false, url: null };
+  }
+
+  return openOrFocusProductUrl(url, key);
+}
+
 async function runCheckAllWatches({ notify = true } = {}) {
   const initialWatches = await getWatches();
   const keys = Object.keys(initialWatches);
-  if (!keys.length) return { checked: 0, drops: 0 };
+  if (!keys.length) return { checked: 0, drops: 0, unavailable: 0 };
 
   let checked = 0;
   let drops = 0;
+  let unavailableCount = 0;
   let didFetch = false;
 
   for (let i = 0; i < keys.length; i++) {
@@ -64,12 +234,31 @@ async function runCheckAllWatches({ notify = true } = {}) {
 
     try {
       const snapshot = await fetchProduct(key);
-      let dropInfo = null;
+      let alertInfo = null;
+      let unavailableNotify = null;
 
       const result = await updateWatchIfPresent(key, (watch) => {
-        if (snapshot.price == null) {
-          watch.lastCheckedAt = Date.now();
-          watch.lastError = t("noPriceInApi");
+        watch.title = snapshot.title || watch.title;
+        watch.url = snapshot.url || watch.url;
+        watch.image = snapshot.image || watch.image;
+        watch.currency = snapshot.currency || watch.currency || "BYN";
+        watch.lastCheckedAt = snapshot.fetchedAt;
+
+        if (snapshot.unavailable || snapshot.price == null) {
+          const wasUnavailable = Boolean(watch.unavailable);
+          const reason = snapshot.unavailableReason || "no_offers";
+          watch.unavailable = true;
+          watch.unavailableReason = reason;
+          watch.unavailableSince = wasUnavailable
+            ? watch.unavailableSince || snapshot.fetchedAt
+            : snapshot.fetchedAt;
+          watch.lastError = null;
+          if (notify && !wasUnavailable) {
+            unavailableNotify = {
+              watch: { ...watch },
+              reason,
+            };
+          }
           return watch;
         }
 
@@ -80,25 +269,26 @@ async function runCheckAllWatches({ notify = true } = {}) {
               ? watch.history[watch.history.length - 1].price
               : null;
 
-        watch.title = snapshot.title || watch.title;
-        watch.url = snapshot.url || watch.url;
-        watch.image = snapshot.image || watch.image;
-        watch.currency = snapshot.currency || watch.currency || "BYN";
+        watch.unavailable = false;
+        watch.unavailableSince = null;
+        watch.unavailableReason = null;
         watch.history = appendHistory(watch, snapshot.price, snapshot.fetchedAt);
-        watch.lastCheckedAt = snapshot.fetchedAt;
         watch.lastError = null;
         watch.lastPrice = snapshot.price;
 
-        if (
-          notify &&
-          previous != null &&
-          snapshot.price < previous - 0.009
-        ) {
-          dropInfo = {
-            watch: { ...watch },
-            previous,
-            next: snapshot.price,
-          };
+        const alert = evaluatePriceAlert(watch, previous, snapshot.price);
+        if (alert.shouldNotify) {
+          if (notify) {
+            watch.targetNotifiedPrice = alert.nextTargetNotifiedPrice;
+            alertInfo = {
+              type: alert.type,
+              watch: { ...watch },
+              previous,
+              next: snapshot.price,
+            };
+          }
+        } else {
+          watch.targetNotifiedPrice = alert.nextTargetNotifiedPrice;
         }
         return watch;
       });
@@ -106,11 +296,60 @@ async function runCheckAllWatches({ notify = true } = {}) {
       if (result.removed) continue;
 
       checked += 1;
-      if (dropInfo) {
+      if (snapshot.unavailable || snapshot.price == null) {
+        unavailableCount += 1;
+        if (unavailableNotify) {
+          await notifyProductUnavailable(
+            unavailableNotify.watch,
+            unavailableNotify.reason
+          );
+        }
+      } else if (alertInfo) {
         drops += 1;
-        await notifyPriceDrop(dropInfo.watch, dropInfo.previous, dropInfo.next);
+        if (alertInfo.type === "target") {
+          await notifyTargetPriceReached(alertInfo.watch, alertInfo.next);
+        } else {
+          await notifyPriceDrop(
+            alertInfo.watch,
+            alertInfo.previous,
+            alertInfo.next
+          );
+        }
       }
     } catch (err) {
+      if (err?.status === 404 || err?.status === 410) {
+        let unavailableNotify = null;
+        const now = Date.now();
+        const result = await updateWatchIfPresent(key, (watch) => {
+          const wasUnavailable = Boolean(watch.unavailable);
+          watch.unavailable = true;
+          watch.unavailableReason = "delisted";
+          watch.unavailableSince = wasUnavailable
+            ? watch.unavailableSince || now
+            : now;
+          watch.lastCheckedAt = now;
+          watch.lastError = null;
+          if (notify && !wasUnavailable) {
+            unavailableNotify = {
+              watch: { ...watch },
+              reason: "delisted",
+            };
+          }
+          return watch;
+        });
+        if (!result.removed) {
+          checked += 1;
+          unavailableCount += 1;
+          if (unavailableNotify) {
+            await notifyProductUnavailable(
+              unavailableNotify.watch,
+              unavailableNotify.reason
+            );
+          }
+        }
+        continue;
+      }
+
       const result = await updateWatchIfPresent(key, (watch) => {
         watch.lastCheckedAt = Date.now();
         watch.lastError = String(err?.message || err);
@@ -123,7 +362,11 @@ async function runCheckAllWatches({ notify = true } = {}) {
     }
   }
 
-  return { checked, drops };
+  if (checked > 0) {
+    await setLastCheckAt(Date.now());
+  }
+
+  return { checked, drops, unavailable: unavailableCount };
 }
 
 function checkAllWatches(options = {}) {
@@ -134,25 +377,89 @@ function checkAllWatches(options = {}) {
   return activeCheckPromise;
 }
 
+async function checkIfStale({ notify = true, requireLastCheckAt = false } = {}) {
+  if (activeCheckPromise) return activeCheckPromise;
+  if (requireLastCheckAt) {
+    const lastCheckAt = await getLastCheckAt();
+    if (lastCheckAt == null) {
+      return { skipped: true, checked: 0, drops: 0, unavailable: 0 };
+    }
+  }
+  if (activeCheckPromise) return activeCheckPromise;
+  if (activeStaleCheckPromise) return activeStaleCheckPromise;
+
+  activeStaleCheckPromise = (async () => {
+    const [watches, settings, lastCheckAt] = await Promise.all([
+      getWatches(),
+      getSettings(),
+      getLastCheckAt(),
+    ]);
+    if (
+      !isCheckStale({
+        lastCheckAt,
+        watches,
+        intervalHours: settings.checkIntervalHours,
+      })
+    ) {
+      return { skipped: true, checked: 0, drops: 0, unavailable: 0 };
+    }
+    return checkAllWatches({ notify });
+  })().finally(() => {
+    activeStaleCheckPromise = null;
+  });
+
+  return activeStaleCheckPromise;
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   await ensureAlarm();
-  // Initial quiet check shortly after install (no spam if empty).
+  // Initial check shortly after install/update if watches are stale.
   chrome.alarms.create("onliner-price-check-once", { delayInMinutes: 0.2 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  ensureAlarm();
+  ensureAlarm()
+    .then(() => checkIfStale({ notify: true }))
+    .catch((err) => console.warn("[OnlinerPT] startup check failed", err));
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (
-    alarm.name === CHECK_ALARM ||
-    alarm.name === "onliner-price-check-once"
-  ) {
+  if (alarm.name === CHECK_ALARM) {
     await ensureAlarm();
     await checkAllWatches({ notify: true });
+    return;
+  }
+  if (alarm.name === "onliner-price-check-once") {
+    await ensureAlarm();
+    await checkIfStale({ notify: true });
   }
 });
+
+if (chrome.notifications?.onClicked) {
+  chrome.notifications.onClicked.addListener((notificationId) => {
+    handleNotificationClick(notificationId).catch((err) =>
+      console.warn("[OnlinerPT] notification click failed", err)
+    );
+  });
+}
+
+if (chrome.notifications?.onClosed) {
+  chrome.notifications.onClosed.addListener((notificationId) => {
+    removeNotificationTarget(notificationId).catch((err) =>
+      console.warn("[OnlinerPT] notification cleanup failed", err)
+    );
+  });
+}
+
+if (chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[SETTINGS_KEY]) {
+      ensureAlarm().catch((err) =>
+        console.warn("[OnlinerPT] alarm reschedule failed", err)
+      );
+    }
+  });
+}
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
@@ -167,12 +474,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok: true, ...result });
       return;
     }
-    if (message.type === "GET_STATUS") {
+    if (message.type === "SET_CHECK_INTERVAL") {
+      const settings = await setSettings({
+        checkIntervalHours: message.checkIntervalHours,
+      });
+      await ensureAlarm({ forceReschedule: true });
       const alarm = await chrome.alarms.get(CHECK_ALARM);
       sendResponse({
         ok: true,
-        periodMinutes: CHECK_PERIOD_MINUTES,
+        settings,
+        periodMinutes: settings.checkIntervalHours * 60,
         alarm,
+      });
+      return;
+    }
+    if (message.type === "GET_STATUS") {
+      const [settings, alarm, lastCheckAt] = await Promise.all([
+        getSettings(),
+        chrome.alarms.get(CHECK_ALARM),
+        getLastCheckAt(),
+      ]);
+      sendResponse({
+        ok: true,
+        checkIntervalHours: settings.checkIntervalHours,
+        periodMinutes: settings.checkIntervalHours * 60,
+        alarm,
+        lastCheckAt,
       });
       return;
     }
@@ -183,4 +510,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-ensureAlarm();
+ensureAlarm()
+  .then(() => checkIfStale({ notify: true, requireLastCheckAt: true }))
+  .catch((err) => console.warn("[OnlinerPT] worker init check failed", err));

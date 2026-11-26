@@ -53,7 +53,9 @@ function createStorageMock(initialWatches = {}) {
         state[k] = structuredClone(v);
         changes[k] = { oldValue, newValue: structuredClone(v) };
       }
-      writes.push(structuredClone(state.watches));
+      if ("watches" in patch) {
+        writes.push(structuredClone(state.watches));
+      }
       for (const fn of listeners) {
         fn(changes, "local");
       }
@@ -193,12 +195,13 @@ function loadBackground({
   };
 }
 
-test("manifest and locales are valid and aligned for v1.0.2", () => {
+test("manifest and locales are valid and aligned for v1.1.0", () => {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8")
   );
-  assert.equal(manifest.version, "1.0.2");
+  assert.equal(manifest.version, "1.1.0");
   assert.equal(manifest.default_locale, "ru");
+  assert.deepEqual(manifest.permissions, ["storage", "alarms", "notifications"]);
   assert.deepEqual(manifest.content_scripts[0].matches, [
     "https://catalog.onliner.by/*",
   ]);
@@ -394,7 +397,7 @@ test("OPT-5: checkAllWatches persists atomically after EACH product check", asyn
   });
 
   const res = await checkAllWatches({ notify: true });
-  assert.deepEqual({ ...res }, { checked: 2, drops: 2 });
+  assert.deepEqual({ ...res }, { checked: 2, drops: 2, unavailable: 0 });
   assert.deepEqual(persistedBeforeP2, [90]);
   assert.equal(storage.getWrites().length, 2);
   assert.equal(storage.getState().p1.lastPrice, 90);
@@ -422,16 +425,16 @@ test("OPT-5: progress from earlier products survives a mid-run crash", async () 
           },
         };
       }
-      // Simulate fatal failure on p2 (e.g. non-retryable 404 or interrupted run)
-      return { ok: false, status: 404, headers: new Map() };
+      // Simulate fatal non-retryable API error on p2
+      return { ok: false, status: 403, headers: new Map() };
     },
   });
 
   const res = await checkAllWatches({ notify: false });
-  assert.deepEqual({ ...res }, { checked: 2, drops: 0 });
+  assert.deepEqual({ ...res }, { checked: 2, drops: 0, unavailable: 0 });
   assert.equal(storage.getState().p1.lastPrice, 88);
   assert.equal(storage.getState().p1.lastError, null);
-  assert.equal(storage.getState().p2.lastError, "API Onliner (код 404)");
+  assert.equal(storage.getState().p2.lastError, "API Onliner (код 403)");
 });
 
 test("OPT-5: concurrent checkAllWatches calls share the in-flight run", async () => {
@@ -462,8 +465,8 @@ test("OPT-5: concurrent checkAllWatches calls share the in-flight run", async ()
     checkAllWatches({ notify: false }),
   ]);
   assert.equal(fetches, 1);
-  assert.deepEqual({ ...r1 }, { checked: 1, drops: 0 });
-  assert.deepEqual({ ...r2 }, { checked: 1, drops: 0 });
+  assert.deepEqual({ ...r1 }, { checked: 1, drops: 0, unavailable: 0 });
+  assert.deepEqual({ ...r2 }, { checked: 1, drops: 0, unavailable: 0 });
 });
 
 test("OPT-5: concurrent unwatch mid-fetch does NOT resurrect watch or notify", async () => {
@@ -509,7 +512,7 @@ test("OPT-5: concurrent unwatch mid-fetch does NOT resurrect watch or notify", a
   const res = await checkAllWatches({ notify: true });
   // p1 unwatched mid-fetch, p2 skipped before fetch, only p3 checked & dropped
   assert.deepEqual(fetchedKeys, ["p1", "p3"]);
-  assert.deepEqual({ ...res }, { checked: 1, drops: 1 });
+  assert.deepEqual({ ...res }, { checked: 1, drops: 1, unavailable: 0 });
 
   const finalState = storage.getState();
   assert.equal(finalState.p1, undefined, "p1 must not be resurrected");

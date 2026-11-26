@@ -210,5 +210,211 @@
         "example": "Missing product key"
       }
     }
+  },
+  "targetPriceLabel": {
+    "message": "Target",
+    "description": "Label before target price input on a watch card"
+  },
+  "targetPricePlaceholder": {
+    "message": "Price ≤",
+    "description": "Placeholder for target price input"
+  },
+  "targetPriceSave": {
+    "message": "Save",
+    "description": "Button to save target price"
+  },
+  "targetPriceClear": {
+    "message": "Clear target",
+    "description": "Tooltip and aria-label for clearing target price"
+  },
+  "targetPriceInvalid": {
+    "message": "Enter a valid price above 0",
+    "description": "Validation error when target price input is invalid"
+  },
+  "targetPriceSaved": {
+    "message": "Target price saved: $1",
+    "description": "Status message when target price is saved",
+    "placeholders": {
+      "price": {
+        "content": "$1",
+        "example": "1,500.00 BYN"
+      }
+    }
+  },
+  "targetPriceCleared": {
+    "message": "Target price cleared",
+    "description": "Status message when target price is cleared"
+  },
+  "targetPriceReachedBadge": {
+    "message": "Target reached",
+    "description": "Badge shown when current price is at or below target price"
+  },
+  "targetPriceReachedTitle": {
+    "message": "Target price reached",
+    "description": "Chrome notification title when target price is reached"
+  },
+  "targetPriceReachedBody": {
+    "message": "Price $1 (target: $2)",
+    "description": "Chrome notification body line when target price is reached",
+    "placeholders": {
+      "price": {
+        "content": "$1",
+        "example": "1,450.00 BYN"
+      },
+      "target": {
+        "content": "$2",
+        "example": "1,500.00 BYN"
+      }
+    }
+  },
+  "productUnavailableTitle": {
+    "message": "Product unavailable",
+    "description": "Chrome notification title when a watched product becomes unavailable or delisted"
+  },
+  "productDelistedBody": {
+    "message": "Product was removed or delisted from the catalog",
+    "description": "Notification body when product returns 404/410 from API"
+  },
+  "productNoOffersBody": {
+    "message": "No active offers in the catalog",
+    "description": "Notification body when product has no active offers or price in API"
+  },
+  "statusUnavailable": {
+    "message": "Unavailable",
+    "description": "Status badge on watch card when product has no active offers"
+  },
+  "statusDelisted": {
+    "message": "Delisted",
+    "description": "Status badge on watch card when product was removed from catalog (404)"
+  },
+  "checkSummaryWithUnavailable": {
+    "message": "Checked $1, drops $2, unavailable $3",
+    "description": "Status after manual check when unavailable products were found",
+    "placeholders": {
+      "checked": {
+        "content": "$1",
+        "example": "3"
+      },
+      "drops": {
+        "content": "$2",
+        "example": "1"
+      },
+      "unavailable": {
+        "content": "$3",
+        "example": "1"
+      }
+    }
+  },
+  "intervalOptionHours": {
+    "message": "$1 h",
+    "description": "Option label in check interval selector",
+    "placeholders": {
+      "hours": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "intervalSelectAria": {
+    "message": "Automatic check interval",
+    "description": "aria-label for check interval selector"
+  },
+  "intervalUpdated": {
+    "message": "Check interval: $1 h",
+    "description": "Status message after changing check interval",
+    "placeholders": {
+      "hours": {
+        "content": "$1",
+        "example": "6"
+      }
+    }
+  },
+  "exportBtn": {
+    "message": "Export",
+    "description": "Button to export watches and history as JSON"
+  },
+  "importBtn": {
+    "message": "Import",
+    "description": "Button to import watches and history from JSON"
+  },
+  "exportSuccess": {
+    "message": "Exported $1 watches",
+    "description": "Status message after exporting backup JSON",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "exportFailed": {
+    "message": "Export failed: $1",
+    "description": "Status message when export fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Storage error"
+      }
+    }
+  },
+  "importConfirmPrompt": {
+    "message": "Backup has $1 watches. Merge with current list or replace?",
+    "description": "Inline confirmation prompt before importing JSON backup",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importMergeBtn": {
+    "message": "Merge",
+    "description": "Button to merge imported backup with existing watches"
+  },
+  "importReplaceBtn": {
+    "message": "Replace",
+    "description": "Button to replace existing watches with imported backup"
+  },
+  "importCancelBtn": {
+    "message": "Cancel",
+    "description": "Button to cancel import confirmation"
+  },
+  "importSuccessMerge": {
+    "message": "Imported (merged): $1",
+    "description": "Status message after merge import",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importSuccessReplace": {
+    "message": "Imported (replaced): $1",
+    "description": "Status message after replace import",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "importInvalidJson": {
+    "message": "Invalid JSON file",
+    "description": "Error when imported file is not valid JSON"
+  },
+  "importInvalidSchema": {
+    "message": "Invalid backup format",
+    "description": "Error when imported JSON fails schema validation"
+  },
+  "importFailed": {
+    "message": "Import failed: $1",
+    "description": "Generic import failure message",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Invalid format"
+      }
+    }
   }
 }
