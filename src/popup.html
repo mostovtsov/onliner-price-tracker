@@ -12,12 +12,20 @@
         <h1 id="extTitle">Onliner Price Tracker</h1>
         <p class="sub">
           <span id="subtitleBefore">Локально · проверка каждые</span>
-          <span id="intervalLabel">3</span>
-          <span id="subtitleAfter">ч</span>
+          <select id="intervalSelect" class="interval-select"></select>
         </p>
       </div>
       <button type="button" id="checkNow" class="ghost">Проверить сейчас</button>
     </header>
+
+    <section id="importConfirm" class="import-confirm" hidden>
+      <p id="importConfirmText" class="import-confirm-text"></p>
+      <div class="import-confirm-actions">
+        <button type="button" id="importMergeBtn" class="primary-sm">Объединить</button>
+        <button type="button" id="importReplaceBtn" class="danger-sm">Заменить</button>
+        <button type="button" id="importCancelBtn" class="ghost-sm">Отмена</button>
+      </div>
+    </section>
 
     <main>
       <p id="empty" class="empty" hidden>
@@ -30,7 +38,18 @@
     </main>
 
     <footer class="footer">
-      <span id="status"></span>
+      <span id="status" class="status"></span>
+      <div class="footer-actions">
+        <button type="button" id="exportBtn" class="link-btn">Экспорт</button>
+        <span class="sep" aria-hidden="true">·</span>
+        <button type="button" id="importBtn" class="link-btn">Импорт</button>
+        <input
+          type="file"
+          id="importFile"
+          accept=".json,application/json"
+          hidden
+        />
+      </div>
     </footer>
 
     <script src="shared.js"></script>

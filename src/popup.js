@@ -3,9 +3,19 @@
   "use strict";
 
   const {
+    ALLOWED_INTERVAL_HOURS,
     CHECK_INTERVAL_HOURS,
+    SETTINGS_KEY,
+    PRICE_EPSILON,
+    getSettings,
+    setSettings,
     getWatches,
     unwatchProduct,
+    setWatchTargetPrice,
+    computeChartLayout,
+    buildExportPayload,
+    validateImportPayload,
+    importBackup,
     formatPrice,
     t,
     tPlural,
@@ -15,7 +25,37 @@
   const emptyEl = document.getElementById("empty");
   const statusEl = document.getElementById("status");
   const checkBtn = document.getElementById("checkNow");
-  const intervalLabel = document.getElementById("intervalLabel");
+  const intervalSelect = document.getElementById("intervalSelect");
+  const exportBtn = document.getElementById("exportBtn");
+  const importBtn = document.getElementById("importBtn");
+  const importFileInput = document.getElementById("importFile");
+  const importConfirmEl = document.getElementById("importConfirm");
+  const importConfirmTextEl = document.getElementById("importConfirmText");
+  const importMergeBtn = document.getElementById("importMergeBtn");
+  const importReplaceBtn = document.getElementById("importReplaceBtn");
+  const importCancelBtn = document.getElementById("importCancelBtn");
+
+  let pendingImportPayload = null;
+  let renderSeq = 0;
+  let isChecking = false;
+  let preserveStatusUntil = 0;
+
+  function setStatusFeedback(text, holdMs = 4000) {
+    statusEl.textContent = text;
+    preserveStatusUntil = Date.now() + holdMs;
+  }
+
+  function populateIntervalOptions() {
+    intervalSelect.innerHTML = "";
+    for (const hours of ALLOWED_INTERVAL_HOURS) {
+      const opt = document.createElement("option");
+      opt.value = String(hours);
+      opt.textContent = t("intervalOptionHours", [String(hours)]);
+      intervalSelect.appendChild(opt);
+    }
+    intervalSelect.value = String(CHECK_INTERVAL_HOURS);
+    intervalSelect.setAttribute("aria-label", t("intervalSelectAria"));
+  }
 
   function applyStaticI18n() {
     const name = t("extName");
@@ -24,16 +64,27 @@
     document.getElementById("subtitleBefore").textContent = t(
       "popupSubtitleBefore"
     );
-    document.getElementById("subtitleAfter").textContent = t(
-      "popupSubtitleAfter"
-    );
     checkBtn.textContent = t("checkNow");
     document.getElementById("emptyBefore").textContent = t("emptyStateBefore");
     document.getElementById("emptyAfter").textContent = t("emptyStateAfter");
-    intervalLabel.textContent = String(CHECK_INTERVAL_HOURS);
+    exportBtn.textContent = t("exportBtn");
+    importBtn.textContent = t("importBtn");
+    importMergeBtn.textContent = t("importMergeBtn");
+    importReplaceBtn.textContent = t("importReplaceBtn");
+    importCancelBtn.textContent = t("importCancelBtn");
+    populateIntervalOptions();
   }
 
   applyStaticI18n();
+
+  async function syncSettingsUi() {
+    try {
+      const settings = await getSettings();
+      intervalSelect.value = String(settings.checkIntervalHours);
+    } catch {
+      intervalSelect.value = String(CHECK_INTERVAL_HOURS);
+    }
+  }
 
   function deltaClass(current, previous) {
     if (previous == null || current == null) return { text: "", cls: "flat" };
@@ -51,75 +102,135 @@
     };
   }
 
-  function drawChart(canvas, history) {
+  function drawChart(canvas, history, targetPrice = null) {
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth || 340;
-    const cssH = canvas.clientHeight || 72;
+    const cssW = canvas.clientWidth || 346;
+    const cssH = canvas.clientHeight || 92;
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
 
-    const points = (history || [])
-      .filter((p) => p && Number.isFinite(p.price))
-      .slice(-60);
+    const layout = computeChartLayout(history, {
+      width: cssW,
+      height: cssH,
+      maxPoints: 60,
+    });
 
-    if (points.length === 0) {
+    if (layout.points.length === 0) {
       ctx.fillStyle = "#94a3b8";
       ctx.font = "12px Segoe UI, system-ui, sans-serif";
       ctx.fillText(t("noPricePoints"), 12, cssH / 2 + 4);
       return;
     }
 
-    const prices = points.map((p) => p.price);
-    let min = Math.min(...prices);
-    let max = Math.max(...prices);
-    if (min === max) {
-      min -= 1;
-      max += 1;
-    }
-    const padX = 8;
-    const padY = 10;
-    const w = cssW - padX * 2;
-    const h = cssH - padY * 2;
+    const strokeColor = layout.falling ? "#047857" : "#b45309";
+    const fillTop = layout.falling
+      ? "rgba(4,120,87,0.20)"
+      : "rgba(180,83,9,0.16)";
 
-    const xy = points.map((p, i) => {
-      const x =
-        points.length === 1
-          ? padX + w / 2
-          : padX + (i / (points.length - 1)) * w;
-      const y = padY + (1 - (p.price - min) / (max - min)) * h;
-      return { x, y, price: p.price };
-    });
-
-    // fill
-    const grad = ctx.createLinearGradient(0, 0, 0, cssH);
-    const falling = points[points.length - 1].price <= points[0].price;
-    grad.addColorStop(0, falling ? "rgba(4,120,87,0.22)" : "rgba(180,83,9,0.18)");
-    grad.addColorStop(1, "rgba(255,255,255,0)");
+    // Baseline separator above X-axis labels
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(xy[0].x, cssH);
-    xy.forEach((p) => ctx.lineTo(p.x, p.y));
-    ctx.lineTo(xy[xy.length - 1].x, cssH);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // line
-    ctx.beginPath();
-    xy.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-    ctx.strokeStyle = falling ? "#047857" : "#b45309";
-    ctx.lineWidth = 2;
-    ctx.lineJoin = "round";
+    ctx.moveTo(layout.plotLeft, layout.plotBottom);
+    ctx.lineTo(layout.plotRight, layout.plotBottom);
     ctx.stroke();
 
-    // last point
-    const last = xy[xy.length - 1];
+    // Optional target price horizontal guide when within Y bounds
+    if (
+      typeof targetPrice === "number" &&
+      Number.isFinite(targetPrice) &&
+      targetPrice >= layout.minPrice &&
+      targetPrice <= layout.maxPrice
+    ) {
+      const ty =
+        layout.plotTop +
+        (1 - (targetPrice - layout.minPrice) / (layout.maxPrice - layout.minPrice)) *
+          layout.plotH;
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "rgba(14, 116, 144, 0.55)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(layout.plotLeft, ty);
+      ctx.lineTo(layout.plotRight, ty);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Area fill under the price curve (skip fill for single point)
+    if (layout.points.length > 1 && layout.span > 0) {
+      const grad = ctx.createLinearGradient(0, layout.plotTop, 0, layout.plotBottom);
+      grad.addColorStop(0, fillTop);
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.beginPath();
+      ctx.moveTo(layout.points[0].x, layout.plotBottom);
+      layout.points.forEach((p) => ctx.lineTo(p.x, p.y));
+      ctx.lineTo(layout.points[layout.points.length - 1].x, layout.plotBottom);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Line segments (solid normally, dashed across long unmeasured gaps)
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    for (const seg of layout.segments) {
+      ctx.save();
+      if (seg.isLongGap) {
+        ctx.setLineDash([4, 3]);
+        ctx.globalAlpha = 0.65;
+      }
+      ctx.beginPath();
+      ctx.moveTo(seg.from.x, seg.from.y);
+      ctx.lineTo(seg.to.x, seg.to.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Point markers for small sets and gap boundaries
+    const markedIndices = new Set();
+    if (layout.points.length <= 12) {
+      for (let i = 0; i < layout.points.length; i++) markedIndices.add(i);
+    } else {
+      layout.segments.forEach((seg, idx) => {
+        if (seg.isLongGap) {
+          markedIndices.add(idx);
+          markedIndices.add(idx + 1);
+        }
+      });
+    }
+    ctx.fillStyle = strokeColor;
+    for (const idx of markedIndices) {
+      const pt = layout.points[idx];
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Highlight last point
+    const last = layout.points[layout.points.length - 1];
     ctx.beginPath();
     ctx.arc(last.x, last.y, 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = falling ? "#047857" : "#b45309";
+    ctx.fillStyle = strokeColor;
     ctx.fill();
+
+    // X-axis date/time labels
+    if (layout.ticks.length > 0) {
+      ctx.fillStyle = "#64748b";
+      ctx.font = "10px Segoe UI, system-ui, sans-serif";
+      ctx.textBaseline = "bottom";
+      const labelY = cssH - 2;
+      for (const tick of layout.ticks) {
+        ctx.textAlign = tick.align;
+        ctx.fillText(tick.label, tick.x, labelY);
+      }
+    }
   }
 
   function firstPrice(watch) {
@@ -129,7 +240,7 @@
 
   function renderWatch(watch) {
     const li = document.createElement("li");
-    li.className = "card";
+    li.className = watch.unavailable ? "card is-unavailable" : "card";
 
     const top = document.createElement("div");
     top.className = "card-top";
@@ -150,11 +261,42 @@
     const mid = document.createElement("div");
     mid.className = "title";
     const link = document.createElement("a");
-    link.href = watch.url || `https://catalog.onliner.by/`;
+    link.href = watch.url || "https://catalog.onliner.by/";
     link.target = "_blank";
     link.rel = "noreferrer";
     link.textContent = watch.title || watch.key;
     mid.appendChild(link);
+
+    const hasTarget =
+      typeof watch.targetPrice === "number" &&
+      Number.isFinite(watch.targetPrice) &&
+      watch.targetPrice > 0;
+    const targetReached =
+      !watch.unavailable &&
+      hasTarget &&
+      watch.lastPrice != null &&
+      watch.lastPrice <= watch.targetPrice + PRICE_EPSILON;
+
+    if (watch.unavailable || targetReached) {
+      const badges = document.createElement("div");
+      badges.className = "badges";
+      if (watch.unavailable) {
+        const badge = document.createElement("span");
+        const isDelisted = watch.unavailableReason === "delisted";
+        badge.className = isDelisted ? "badge delisted" : "badge unavailable";
+        badge.textContent = isDelisted
+          ? t("statusDelisted")
+          : t("statusUnavailable");
+        badges.appendChild(badge);
+      }
+      if (targetReached) {
+        const badge = document.createElement("span");
+        badge.className = "badge target-hit";
+        badge.textContent = t("targetPriceReachedBadge");
+        badges.appendChild(badge);
+      }
+      mid.appendChild(badges);
+    }
 
     const meta = document.createElement("div");
     meta.className = "meta";
@@ -168,7 +310,7 @@
     top.appendChild(mid);
 
     const priceBox = document.createElement("div");
-    priceBox.className = "price";
+    priceBox.className = watch.unavailable ? "price is-unavailable" : "price";
     priceBox.textContent = formatPrice(watch.lastPrice, watch.currency);
     const d = deltaClass(watch.lastPrice, firstPrice(watch));
     if (d.text) {
@@ -185,6 +327,82 @@
     const canvas = document.createElement("canvas");
     chartWrap.appendChild(canvas);
     li.appendChild(chartWrap);
+
+    // Target price row
+    const targetRow = document.createElement("div");
+    targetRow.className = "target-row";
+
+    const targetLabel = document.createElement("span");
+    targetLabel.className = "target-label";
+    targetLabel.textContent = `${t("targetPriceLabel")}:`;
+    targetRow.appendChild(targetLabel);
+
+    const targetInput = document.createElement("input");
+    targetInput.type = "text";
+    targetInput.inputMode = "decimal";
+    targetInput.className = "target-input";
+    targetInput.placeholder = t("targetPricePlaceholder");
+    targetInput.value = hasTarget ? String(watch.targetPrice) : "";
+    targetRow.appendChild(targetInput);
+
+    const targetCurrency = document.createElement("span");
+    targetCurrency.className = "target-currency";
+    targetCurrency.textContent = watch.currency || "BYN";
+    targetRow.appendChild(targetCurrency);
+
+    const saveTargetBtn = document.createElement("button");
+    saveTargetBtn.type = "button";
+    saveTargetBtn.className = "target-save";
+    saveTargetBtn.textContent = t("targetPriceSave");
+
+    const saveTarget = async () => {
+      targetInput.classList.remove("invalid");
+      const raw = targetInput.value.trim();
+      try {
+        const res = await setWatchTargetPrice(watch.key, raw);
+        if (res.removed) {
+          await render();
+          return;
+        }
+        setStatusFeedback(
+          res.watch.targetPrice != null
+            ? t("targetPriceSaved", [
+                formatPrice(res.watch.targetPrice, res.watch.currency),
+              ])
+            : t("targetPriceCleared")
+        );
+        await render({ preserveStatus: true });
+      } catch (err) {
+        targetInput.classList.add("invalid");
+        setStatusFeedback(String(err?.message || err));
+      }
+    };
+
+    saveTargetBtn.addEventListener("click", saveTarget);
+    targetInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        saveTarget();
+      }
+    });
+    targetRow.appendChild(saveTargetBtn);
+
+    if (hasTarget) {
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "target-clear";
+      clearBtn.textContent = "×";
+      clearBtn.title = t("targetPriceClear");
+      clearBtn.setAttribute("aria-label", t("targetPriceClear"));
+      clearBtn.addEventListener("click", async () => {
+        await setWatchTargetPrice(watch.key, null);
+        setStatusFeedback(t("targetPriceCleared"));
+        await render({ preserveStatus: true });
+      });
+      targetRow.appendChild(clearBtn);
+    }
+
+    li.appendChild(targetRow);
 
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -207,11 +425,10 @@
 
     listEl.appendChild(li);
     // Draw after layout so clientWidth is available
-    requestAnimationFrame(() => drawChart(canvas, watch.history));
+    requestAnimationFrame(() =>
+      drawChart(canvas, watch.history, watch.targetPrice ?? null)
+    );
   }
-
-  let renderSeq = 0;
-  let isChecking = false;
 
   async function render({ preserveStatus = false } = {}) {
     const seq = ++renderSeq;
@@ -230,6 +447,31 @@
     }
   }
 
+  function hideImportConfirm() {
+    pendingImportPayload = null;
+    importConfirmEl.hidden = true;
+    importConfirmTextEl.textContent = "";
+  }
+
+  intervalSelect.addEventListener("change", async () => {
+    const hours = Number(intervalSelect.value);
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: "SET_CHECK_INTERVAL",
+        checkIntervalHours: hours,
+      });
+      if (!res?.ok) throw new Error(res?.error || "Failed");
+      setStatusFeedback(
+        t("intervalUpdated", [String(res.settings.checkIntervalHours)])
+      );
+    } catch {
+      const saved = await setSettings({ checkIntervalHours: hours });
+      setStatusFeedback(
+        t("intervalUpdated", [String(saved.checkIntervalHours)])
+      );
+    }
+  });
+
   checkBtn.addEventListener("click", async () => {
     checkBtn.disabled = true;
     isChecking = true;
@@ -241,23 +483,131 @@
       });
       if (!res?.ok) throw new Error(res?.error || t("checkFailed"));
       await render({ preserveStatus: true });
-      statusEl.textContent = t("checkSummary", [
-        String(res.checked),
-        String(res.drops),
-      ]);
+      setStatusFeedback(
+        res.unavailable > 0
+          ? t("checkSummaryWithUnavailable", [
+              String(res.checked),
+              String(res.drops),
+              String(res.unavailable),
+            ])
+          : t("checkSummary", [String(res.checked), String(res.drops)])
+      );
     } catch (err) {
-      statusEl.textContent = String(err?.message || err);
+      setStatusFeedback(String(err?.message || err));
     } finally {
       isChecking = false;
       checkBtn.disabled = false;
     }
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.watches) {
-      render({ preserveStatus: isChecking });
+  exportBtn.addEventListener("click", async () => {
+    try {
+      const [watches, settings] = await Promise.all([
+        getWatches(),
+        getSettings(),
+      ]);
+      const payload = buildExportPayload({ watches, settings });
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `onliner-price-tracker-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatusFeedback(
+        t("exportSuccess", [String(Object.keys(watches).length)])
+      );
+    } catch (err) {
+      setStatusFeedback(t("exportFailed", [String(err?.message || err)]));
     }
   });
 
+  importBtn.addEventListener("click", () => {
+    importFileInput.value = "";
+    importFileInput.click();
+  });
+
+  importFileInput.addEventListener("change", async () => {
+    const file = importFileInput.files?.[0];
+    if (!file) return;
+    hideImportConfirm();
+
+    let parsed;
+    try {
+      const text = await file.text();
+      parsed = JSON.parse(text);
+    } catch {
+      setStatusFeedback(t("importInvalidJson"));
+      importFileInput.value = "";
+      return;
+    }
+
+    const check = validateImportPayload(parsed);
+    if (!check.ok) {
+      setStatusFeedback(check.error || t("importInvalidSchema"));
+      importFileInput.value = "";
+      return;
+    }
+
+    pendingImportPayload = parsed;
+    const count = Object.keys(check.data.watches).length;
+    importConfirmTextEl.textContent = t("importConfirmPrompt", [String(count)]);
+    importConfirmEl.hidden = false;
+    importFileInput.value = "";
+  });
+
+  async function applyPendingImport(mode) {
+    if (!pendingImportPayload) return;
+    const payload = pendingImportPayload;
+    hideImportConfirm();
+    try {
+      const res = await importBackup(payload, { mode });
+      if (!res.ok) {
+        statusEl.textContent = res.error || t("importInvalidSchema");
+        return;
+      }
+      if (res.settingsUpdated && res.settings) {
+        intervalSelect.value = String(res.settings.checkIntervalHours);
+        try {
+          await chrome.runtime.sendMessage({
+            type: "SET_CHECK_INTERVAL",
+            checkIntervalHours: res.settings.checkIntervalHours,
+          });
+        } catch {
+          /* storage listener in background also reschedules */
+        }
+      }
+      setStatusFeedback(
+        mode === "replace"
+          ? t("importSuccessReplace", [String(res.watchCount)])
+          : t("importSuccessMerge", [String(res.watchCount)])
+      );
+      await render({ preserveStatus: true });
+    } catch (err) {
+      setStatusFeedback(t("importFailed", [String(err?.message || err)]));
+    }
+  }
+
+  importMergeBtn.addEventListener("click", () => applyPendingImport("merge"));
+  importReplaceBtn.addEventListener("click", () => applyPendingImport("replace"));
+  importCancelBtn.addEventListener("click", hideImportConfirm);
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    if (changes.watches) {
+      render({
+        preserveStatus: isChecking || Date.now() < preserveStatusUntil,
+      });
+    }
+    if (changes[SETTINGS_KEY]) {
+      syncSettingsUi();
+    }
+  });
+
+  syncSettingsUi();
   render();
 })();
