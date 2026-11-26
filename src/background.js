@@ -3,8 +3,11 @@ importScripts("shared.js");
 
 const {
   CHECK_ALARM,
+  STORAGE_KEY,
   SETTINGS_KEY,
   FETCH_GAP_MS,
+  BADGE_DROP_COLOR,
+  BADGE_TEXT_COLOR,
   isCatalogOnlinerUrl,
   parseProductUrl,
   getSettings,
@@ -16,18 +19,64 @@ const {
   saveNotificationTarget,
   consumeNotificationTarget,
   removeNotificationTarget,
+  formatBadgeText,
+  getUnreadDropKeys,
+  addUnreadDropKey,
+  removeUnreadDropKey,
+  clearUnreadDropKeys,
+  pruneUnreadDropKeys,
   getWatches,
   updateWatchIfPresent,
   appendHistory,
   evaluatePriceAlert,
-  fetchProduct,
+  fetchProductWithFallback,
   sleep,
   formatPrice,
   t,
+  tPlural,
 } = OnlinerPT;
 
 let activeCheckPromise = null;
 let activeStaleCheckPromise = null;
+
+async function applyActionBadge(count) {
+  const safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  const text = formatBadgeText(safeCount);
+  if (!chrome.action) {
+    return { text, count: safeCount };
+  }
+  if (typeof chrome.action.setBadgeText === "function") {
+    await chrome.action.setBadgeText({ text });
+  }
+  if (safeCount > 0) {
+    if (typeof chrome.action.setBadgeBackgroundColor === "function") {
+      await chrome.action.setBadgeBackgroundColor({ color: BADGE_DROP_COLOR });
+    }
+    if (typeof chrome.action.setBadgeTextColor === "function") {
+      await chrome.action.setBadgeTextColor({ color: BADGE_TEXT_COLOR });
+    }
+  }
+  if (typeof chrome.action.setTitle === "function") {
+    const title =
+      safeCount > 0
+        ? `${t("extName")} — ${tPlural("badgeDrops", safeCount)}`
+        : t("extName");
+    await chrome.action.setTitle({ title });
+  }
+  return { text, count: safeCount };
+}
+
+async function syncActionBadge() {
+  const [watches, keys] = await Promise.all([
+    getWatches(),
+    getUnreadDropKeys(),
+  ]);
+  const validKeys = keys.filter((k) => Boolean(watches[k]));
+  if (validKeys.length !== keys.length) {
+    await pruneUnreadDropKeys(watches);
+  }
+  return applyActionBadge(validKeys.length);
+}
 
 async function ensureAlarm({ forceReschedule = false } = {}) {
   const { checkIntervalHours } = await getSettings();
@@ -201,6 +250,11 @@ async function handleNotificationClick(notificationId) {
     }
   }
 
+  if (key) {
+    await removeUnreadDropKey(key);
+    await syncActionBadge();
+  }
+
   if (!url) {
     return { opened: false, focused: false, url: null };
   }
@@ -223,17 +277,21 @@ async function runCheckAllWatches({ notify = true } = {}) {
 
     // Skip products that were unwatched before their turn in this run.
     const beforeFetch = await getWatches();
-    if (!beforeFetch[key]) continue;
+    let currentWatch = beforeFetch[key];
+    if (!currentWatch) continue;
 
     if (didFetch) {
       await sleep(FETCH_GAP_MS);
       const afterGap = await getWatches();
-      if (!afterGap[key]) continue;
+      currentWatch = afterGap[key];
+      if (!currentWatch) continue;
     }
     didFetch = true;
 
     try {
-      const snapshot = await fetchProduct(key);
+      const snapshot = await fetchProductWithFallback(key, {
+        fallbackUrl: currentWatch.url || null,
+      });
       let alertInfo = null;
       let unavailableNotify = null;
 
@@ -315,6 +373,8 @@ async function runCheckAllWatches({ notify = true } = {}) {
             alertInfo.next
           );
         }
+        await addUnreadDropKey(key);
+        await syncActionBadge();
       }
     } catch (err) {
       if (err?.status === 404 || err?.status === 410) {
@@ -413,12 +473,14 @@ async function checkIfStale({ notify = true, requireLastCheckAt = false } = {}) 
 
 chrome.runtime.onInstalled.addListener(async () => {
   await ensureAlarm();
+  await syncActionBadge();
   // Initial check shortly after install/update if watches are stale.
   chrome.alarms.create("onliner-price-check-once", { delayInMinutes: 0.2 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureAlarm()
+    .then(() => syncActionBadge())
     .then(() => checkIfStale({ notify: true }))
     .catch((err) => console.warn("[OnlinerPT] startup check failed", err));
 });
@@ -453,9 +515,15 @@ if (chrome.notifications?.onClosed) {
 
 if (chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes[SETTINGS_KEY]) {
+    if (area !== "local") return;
+    if (changes[SETTINGS_KEY]) {
       ensureAlarm().catch((err) =>
         console.warn("[OnlinerPT] alarm reschedule failed", err)
+      );
+    }
+    if (changes[STORAGE_KEY]) {
+      syncActionBadge().catch((err) =>
+        console.warn("[OnlinerPT] badge sync failed", err)
       );
     }
   });
@@ -474,6 +542,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ ok: true, ...result });
       return;
     }
+    if (message.type === "CLEAR_BADGE") {
+      await clearUnreadDropKeys();
+      const badge = await applyActionBadge(0);
+      sendResponse({ ok: true, ...badge });
+      return;
+    }
     if (message.type === "SET_CHECK_INTERVAL") {
       const settings = await setSettings({
         checkIntervalHours: message.checkIntervalHours,
@@ -489,10 +563,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
     if (message.type === "GET_STATUS") {
-      const [settings, alarm, lastCheckAt] = await Promise.all([
+      const [settings, alarm, lastCheckAt, unreadDropKeys] = await Promise.all([
         getSettings(),
         chrome.alarms.get(CHECK_ALARM),
         getLastCheckAt(),
+        getUnreadDropKeys(),
       ]);
       sendResponse({
         ok: true,
@@ -500,6 +575,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         periodMinutes: settings.checkIntervalHours * 60,
         alarm,
         lastCheckAt,
+        unreadDropCount: unreadDropKeys.length,
       });
       return;
     }
@@ -511,5 +587,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 ensureAlarm()
+  .then(() => syncActionBadge())
   .then(() => checkIfStale({ notify: true, requireLastCheckAt: true }))
   .catch((err) => console.warn("[OnlinerPT] worker init check failed", err));

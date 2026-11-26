@@ -25,7 +25,10 @@
   const SETTINGS_KEY = "settings";
   const LAST_CHECK_KEY = "lastCheckAt";
   const NOTIFICATION_URLS_KEY = "notificationUrls";
+  const UNREAD_DROPS_KEY = "unreadDropKeys";
   const NOTIFICATION_MAP_LIMIT = 100;
+  const BADGE_DROP_COLOR = "#047857";
+  const BADGE_TEXT_COLOR = "#ffffff";
   const BACKUP_APP_ID = "onliner-price-tracker";
   const BACKUP_SCHEMA_VERSION = 1;
   const PRICE_EPSILON = 0.009;
@@ -183,16 +186,88 @@
     return null;
   }
 
+  function decodeHtmlEntities(str) {
+    if (typeof str !== "string" || !str) return "";
+    return str
+      .replace(/&nbsp;|&#160;|&#xa0;|&thinsp;|&ensp;|&emsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#(\d+);/g, (_m, dec) => {
+        const code = Number(dec);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : "";
+      })
+      .replace(/&#x([0-9a-f]+);/gi, (_m, hex) => {
+        const code = parseInt(hex, 16);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : "";
+      });
+  }
+
+  function detectCurrency(text, fallback = null) {
+    if (typeof text !== "string" || !text) return fallback;
+    if (/\bBYN\b|р\.|руб/i.test(text)) return "BYN";
+    if (/\bUSD\b|\$/i.test(text)) return "USD";
+    if (/\bEUR\b|€/i.test(text)) return "EUR";
+    if (/\bRUB\b|₽/i.test(text)) return "RUB";
+    return fallback;
+  }
+
   /**
-   * Fetch JSON with a per-attempt AbortController timeout and exponential
-   * backoff retries on timeouts, network errors, 408, 429, and 5xx responses.
+   * Extracts a positive price and optional currency from free-form scraped
+   * HTML/DOM text (e.g. "от 2 999,50 р.", "2&nbsp;999,00 BYN", "1499.99").
    */
-  async function fetchJsonWithRetry(url, options = {}) {
+  function parsePriceText(raw) {
+    if (typeof raw === "number") {
+      return Number.isFinite(raw) && raw > 0
+        ? { price: raw, currency: null }
+        : { price: null, currency: null };
+    }
+    if (typeof raw !== "string" || !raw.trim()) {
+      return { price: null, currency: null };
+    }
+    const cleaned = decodeHtmlEntities(raw).replace(/[\u00a0\u2009\u202f]/g, " ").trim();
+    const match = cleaned.match(
+      /(?:^|[^\d-])(\d{1,3}(?: \d{3})+|\d+)(?:[.,](\d{1,2}))?(?!\d)/
+    );
+    if (!match) {
+      return { price: null, currency: detectCurrency(cleaned, null) };
+    }
+    const intPart = match[1].replace(/\s+/g, "");
+    const fracPart = match[2] ? `.${match[2]}` : "";
+    const n = parseFloat(`${intPart}${fracPart}`);
+    return {
+      price: Number.isFinite(n) && n > 0 ? n : null,
+      currency: detectCurrency(cleaned, null),
+    };
+  }
+
+  function cleanProductTitle(raw) {
+    if (typeof raw !== "string") return "";
+    return decodeHtmlEntities(raw)
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\s+купить.*$/i, "")
+      .trim();
+  }
+
+  /**
+   * Fetch JSON or text with a per-attempt AbortController timeout and
+   * exponential backoff retries on timeouts, network errors, 408, 429, and 5xx.
+   */
+  async function fetchWithRetry(url, options = {}) {
     const {
       timeoutMs = FETCH_TIMEOUT_MS,
       maxRetries = FETCH_MAX_RETRIES,
       retryDelayMs = FETCH_RETRY_DELAY_MS,
       fetchOptions = {},
+      responseType = "json",
     } = options;
 
     let lastError = null;
@@ -221,7 +296,18 @@
           throw err;
         }
 
-        return await res.json();
+        if (responseType === "text") {
+          return await res.text();
+        }
+        try {
+          return await res.json();
+        } catch (parseErr) {
+          const err = new Error(t("apiInvalidResponse"));
+          err.code = "INVALID_JSON";
+          err.cause = parseErr;
+          err.retryable = false;
+          throw err;
+        }
       } catch (err) {
         if (err && err.retryable === false) {
           throw err;
@@ -258,32 +344,119 @@
   }
 
   /**
-   * Fetch product snapshot from the public catalog API.
-   * Marks product unavailable when `prices` is null, `price_min` is missing,
-   * or `prices.offers.count === 0`.
+   * Fetch JSON with a per-attempt AbortController timeout and exponential
+   * backoff retries on timeouts, network errors, 408, 429, and 5xx responses.
    */
-  async function fetchProduct(key, options = {}) {
-    const data = await fetchJsonWithRetry(
-      `${API_BASE}${encodeURIComponent(key)}`,
-      {
-        ...options,
-        fetchOptions: {
-          headers: { Accept: "application/json" },
-          credentials: "omit",
-          cache: "no-store",
-          ...(options.fetchOptions || {}),
-        },
+  async function fetchJsonWithRetry(url, options = {}) {
+    return fetchWithRetry(url, { ...options, responseType: "json" });
+  }
+
+  /**
+   * Fetch text/HTML reusing the shared timeout and retry/backoff helper.
+   */
+  async function fetchTextWithRetry(url, options = {}) {
+    return fetchWithRetry(url, { ...options, responseType: "text" });
+  }
+
+  function extractAlternateApiPrice(data) {
+    if (!isPlainObject(data)) return { price: null, currency: null };
+    const candidates = [
+      data.prices?.min_price,
+      data.prices?.min,
+      data.prices?.price,
+      data.prices?.offers?.min_price,
+      data.price_min,
+      data.min_price,
+      data.price,
+    ];
+    for (const candidate of candidates) {
+      if (isPlainObject(candidate)) {
+        const amount = parseAmount(candidate.amount ?? candidate.value ?? candidate.min);
+        if (amount != null && amount > 0) {
+          return {
+            price: amount,
+            currency:
+              typeof candidate.currency === "string" && candidate.currency.trim()
+                ? candidate.currency.trim()
+                : null,
+          };
+        }
+      } else {
+        const amount = parseAmount(candidate);
+        if (amount != null && amount > 0) {
+          return { price: amount, currency: null };
+        }
       }
-    );
-    const minPrice = parseAmount(data?.prices?.price_min?.amount);
-    const offersCount = data?.prices?.offers?.count ?? null;
-    const unavailable =
-      data?.prices == null || minPrice == null || offersCount === 0;
-    const price = unavailable ? null : minPrice;
-    const currency =
-      data?.prices?.price_min?.currency ||
+    }
+    return { price: null, currency: null };
+  }
+
+  /**
+   * Normalize a catalog.api.onliner.by product JSON payload.
+   *
+   * Distinguishes between:
+   * - Explicit unavailable (`prices: null`, `prices.offers.count === 0`, or
+   *   canonical `prices` object with `price_min: null`) -> `unavailable: true`.
+   * - Unrecognized / changed API shape (`prices` key absent or non-object
+   *   with no alternate price fields) -> `shapeChanged: true` so callers can
+   *   fall back to HTML/DOM scraping without falsely marking out-of-stock.
+   */
+  function extractProductFromApiPayload(key, data, fetchedAt = Date.now()) {
+    if (!isPlainObject(data)) {
+      return {
+        key,
+        id: null,
+        title: key,
+        price: null,
+        currency: "BYN",
+        url: null,
+        image: null,
+        offersCount: null,
+        unavailable: false,
+        unavailableReason: null,
+        shapeChanged: true,
+        source: "api",
+        fetchedAt,
+      };
+    }
+
+    const hasPricesKey = Object.prototype.hasOwnProperty.call(data, "prices");
+    const pricesObj = isPlainObject(data.prices) ? data.prices : null;
+    const offersCount = pricesObj?.offers?.count ?? null;
+    const canonicalMin = parseAmount(pricesObj?.price_min?.amount);
+    const hasCanonicalPricesShape =
+      pricesObj != null &&
+      (Object.prototype.hasOwnProperty.call(pricesObj, "price_min") ||
+        Object.prototype.hasOwnProperty.call(pricesObj, "offers"));
+
+    let price = null;
+    let currency =
+      pricesObj?.price_min?.currency ||
       data?.sale?.min_prices_median?.currency ||
       "BYN";
+    let unavailable = false;
+    let shapeChanged = false;
+    let source = "api";
+
+    if (hasPricesKey && data.prices === null) {
+      unavailable = true;
+    } else if (offersCount === 0) {
+      unavailable = true;
+    } else if (canonicalMin != null) {
+      price = canonicalMin;
+    } else {
+      const alt = extractAlternateApiPrice(data);
+      if (alt.price != null) {
+        price = alt.price;
+        if (alt.currency) currency = alt.currency;
+        source = "api-fallback";
+      } else if (hasCanonicalPricesShape) {
+        unavailable = true;
+      } else {
+        shapeChanged = true;
+      }
+    }
+
     const title =
       data?.extended_name ||
       data?.full_name ||
@@ -303,66 +476,561 @@
       offersCount,
       unavailable,
       unavailableReason: unavailable ? "no_offers" : null,
-      fetchedAt: Date.now(),
+      shapeChanged,
+      source,
+      fetchedAt,
     };
   }
 
   /**
-   * DOM fallbacks for the content script when API is slow/blocked.
+   * Fetch product snapshot from the public catalog API.
+   * Marks product unavailable when `prices` is null, `price_min` is missing
+   * in a canonical `prices` object, or `prices.offers.count === 0`.
+   */
+  async function fetchProduct(key, options = {}) {
+    const data = await fetchJsonWithRetry(
+      `${API_BASE}${encodeURIComponent(key)}`,
+      {
+        ...options,
+        fetchOptions: {
+          headers: { Accept: "application/json" },
+          credentials: "omit",
+          cache: "no-store",
+          ...(options.fetchOptions || {}),
+        },
+      }
+    );
+    return extractProductFromApiPayload(key, data, Date.now());
+  }
+
+  function extractJsonLdImage(rawImage) {
+    if (typeof rawImage === "string") return isSafeHttpsUrl(rawImage);
+    if (Array.isArray(rawImage)) {
+      for (const entry of rawImage) {
+        const found = extractJsonLdImage(entry);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (isPlainObject(rawImage)) {
+      return isSafeHttpsUrl(rawImage.url || rawImage.contentUrl || "");
+    }
+    return null;
+  }
+
+  function collectJsonLdNodes(raw, out = []) {
+    if (Array.isArray(raw)) {
+      for (const item of raw) collectJsonLdNodes(item, out);
+      return out;
+    }
+    if (!isPlainObject(raw)) return out;
+    out.push(raw);
+    if (Array.isArray(raw["@graph"])) {
+      collectJsonLdNodes(raw["@graph"], out);
+    }
+    if (isPlainObject(raw.mainEntity)) {
+      collectJsonLdNodes(raw.mainEntity, out);
+    }
+    return out;
+  }
+
+  function flattenJsonLdOffers(rawOffers, out = []) {
+    if (Array.isArray(rawOffers)) {
+      for (const item of rawOffers) flattenJsonLdOffers(item, out);
+      return out;
+    }
+    if (!isPlainObject(rawOffers)) return out;
+    out.push(rawOffers);
+    if (Array.isArray(rawOffers.offers)) {
+      flattenJsonLdOffers(rawOffers.offers, out);
+    }
+    return out;
+  }
+
+  /**
+   * Extracts product metadata and lowest offer price from parsed JSON-LD blocks.
+   * Supports single Product nodes, arrays, `@graph`, `mainEntity`, array `@type`,
+   * single Offer/AggregateOffer, and Offer arrays.
+   */
+  function extractProductFromJsonLdObjects(rawObjects, urlKey = null) {
+    let title = null;
+    let price = null;
+    let currency = null;
+    let image = null;
+    let url = null;
+    let sawOutOfStock = false;
+    let sawInStock = false;
+
+    for (const raw of rawObjects || []) {
+      const nodes = collectJsonLdNodes(raw);
+      for (const item of nodes) {
+        const type = item["@type"];
+        const isProduct =
+          type === "Product" ||
+          (Array.isArray(type) && type.includes("Product"));
+        if (!isProduct) continue;
+
+        if (urlKey && item.url) {
+          const ldKey = parseProductUrl(String(item.url))?.key;
+          if (ldKey && ldKey !== urlKey) continue;
+        }
+
+        if (!title && typeof item.name === "string" && item.name.trim()) {
+          title = cleanProductTitle(item.name);
+        }
+        if (!image) {
+          image = extractJsonLdImage(item.image);
+        }
+        if (!url && typeof item.url === "string") {
+          url = isCatalogOnlinerUrl(item.url);
+        }
+
+        const offers = flattenJsonLdOffers(item.offers);
+        for (const offer of offers) {
+          const availability = String(offer.availability || "");
+          if (/OutOfStock|Discontinued|SoldOut/i.test(availability)) {
+            sawOutOfStock = true;
+          } else if (/InStock|PreOrder|LimitedAvailability/i.test(availability)) {
+            sawInStock = true;
+          }
+          if (Number(offer.offerCount) === 0) {
+            sawOutOfStock = true;
+          }
+
+          const spec = isPlainObject(offer.priceSpecification)
+            ? offer.priceSpecification
+            : null;
+          const rawCandidates = [
+            offer.lowPrice,
+            offer.price,
+            spec?.minPrice,
+            spec?.price,
+          ];
+          for (const rawCandidate of rawCandidates) {
+            const parsed = parsePriceText(rawCandidate);
+            if (parsed.price != null && parsed.price > 0) {
+              if (price == null || parsed.price < price) {
+                price = parsed.price;
+                currency =
+                  offer.priceCurrency ||
+                  spec?.priceCurrency ||
+                  parsed.currency ||
+                  currency;
+              }
+              break;
+            }
+          }
+          if (!currency && (offer.priceCurrency || spec?.priceCurrency)) {
+            currency = offer.priceCurrency || spec?.priceCurrency;
+          }
+        }
+      }
+    }
+
+    const unavailable = price == null && sawOutOfStock && !sawInStock;
+    return {
+      title,
+      price,
+      currency,
+      image,
+      url,
+      unavailable,
+    };
+  }
+
+  /**
+   * Live-page DOM fallback for the content script when API fails or changes shape.
+   *
+   * Fallback extraction order:
+   * 1. JSON-LD (`<script type="application/ld+json">`, Product + Offers)
+   * 2. Structured meta / microdata tags (`product:price:amount`, `og:price:amount`, `itemprop="price"`)
+   * 3. Catalog page DOM price selectors (`.js-description-price-link`, `.offers-description__link_nodecor`, `.product-aside__price`, etc.)
    */
   function scrapeProductFromDom(doc = document) {
-    const urlKey = parseProductUrl(doc.location?.href || "")?.key || null;
-    const meta = doc.querySelector('meta[name="product-id"]');
-    const key = urlKey || meta?.getAttribute("product-id") || null;
+    const pageUrl = doc.location?.href || "";
+    const parsedRef = parseProductUrl(pageUrl);
+    const urlKey = parsedRef?.key || null;
+    const metaId = doc.querySelector('meta[name="product-id"]');
+    const key =
+      urlKey ||
+      metaId?.getAttribute("content") ||
+      metaId?.getAttribute("product-id") ||
+      null;
 
-    let title =
-      doc.querySelector("h1")?.textContent?.trim() ||
-      doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
-      doc.title ||
-      "";
-    title = title.replace(/\s+купить.*$/i, "").trim();
-
+    let title = cleanProductTitle(
+      doc.querySelector("h1")?.textContent ||
+        doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
+        doc.title ||
+        ""
+    );
+    let image = isSafeHttpsUrl(
+      doc.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
+        ""
+    );
     let price = null;
     let currency = "BYN";
+    let unavailable = false;
+    let source = null;
 
+    // Step 1: JSON-LD Product schema
+    const ldObjects = [];
     const ldScripts = doc.querySelectorAll(
       'script[type="application/ld+json"]'
     );
     for (const el of ldScripts) {
       try {
-        const raw = JSON.parse(el.textContent || "null");
-        const items = Array.isArray(raw) ? raw : [raw];
-        for (const item of items) {
-          if (!item || item["@type"] !== "Product") continue;
-          if (urlKey && item.url) {
-            const ldKey = parseProductUrl(String(item.url))?.key;
-            if (ldKey && ldKey !== urlKey) continue;
-          }
-          if (item.name && !title) title = String(item.name);
-          const offers = item.offers;
-          if (offers) {
-            price =
-              parseAmount(offers.lowPrice) ??
-              parseAmount(offers.price) ??
-              price;
-            currency = offers.priceCurrency || currency;
-          }
-        }
+        ldObjects.push(JSON.parse(el.textContent || "null"));
       } catch {
         /* ignore malformed JSON-LD */
       }
     }
+    const ld = extractProductFromJsonLdObjects(ldObjects, urlKey);
+    if (!title && ld.title) title = ld.title;
+    if (!image && ld.image) image = ld.image;
+    if (ld.price != null) {
+      price = ld.price;
+      currency = ld.currency || currency;
+      source = "dom-jsonld";
+    } else if (ld.unavailable) {
+      unavailable = true;
+      source = "dom-jsonld";
+    }
 
+    // Step 2: Structured meta / microdata tags
     if (price == null) {
-      const priceEl =
-        doc.querySelector(".js-description-price-link .h_txt_ell") ||
-        doc.querySelector('[class*="price"] .h_txt_ell');
-      if (priceEl) {
-        price = parseAmount(priceEl.textContent);
+      const metaPriceSelectors = [
+        'meta[property="product:price:amount"]',
+        'meta[property="og:price:amount"]',
+        'meta[itemprop="price"]',
+        'meta[name="price"]',
+        '[itemprop="price"]',
+      ];
+      for (const selector of metaPriceSelectors) {
+        const el = doc.querySelector(selector);
+        if (!el) continue;
+        const rawVal =
+          el.getAttribute?.("content") || el.textContent || "";
+        const parsed = parsePriceText(rawVal);
+        if (parsed.price != null) {
+          price = parsed.price;
+          currency =
+            doc
+              .querySelector(
+                'meta[property="product:price:currency"], meta[property="og:price:currency"], meta[itemprop="priceCurrency"], [itemprop="priceCurrency"]'
+              )
+              ?.getAttribute?.("content") ||
+            parsed.currency ||
+            currency;
+          unavailable = false;
+          source = "dom-meta";
+          break;
+        }
       }
     }
 
-    return { key, title, price, currency };
+    // Step 3: Catalog page DOM price selectors
+    if (price == null) {
+      const domPriceSelectors = [
+        ".js-description-price-link .h_txt_ell",
+        ".js-description-price-link",
+        ".offers-description__link_nodecor",
+        ".product-aside__price",
+        '[class*="price"] .h_txt_ell',
+      ];
+      for (const selector of domPriceSelectors) {
+        const el = doc.querySelector(selector);
+        if (!el) continue;
+        const parsed = parsePriceText(el.textContent || "");
+        if (parsed.price != null) {
+          price = parsed.price;
+          currency = parsed.currency || currency;
+          unavailable = false;
+          source = "dom-selector";
+          break;
+        }
+      }
+    }
+
+    return {
+      key,
+      title,
+      price,
+      currency,
+      image,
+      url: ld.url || parsedRef?.url || null,
+      unavailable,
+      source,
+    };
+  }
+
+  function parseHtmlAttributes(tagText) {
+    const attrs = {};
+    const attrRe =
+      /([a-zA-Z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+    let match;
+    while ((match = attrRe.exec(tagText)) !== null) {
+      const name = match[1].toLowerCase();
+      const val = match[2] ?? match[3] ?? match[4] ?? "";
+      attrs[name] = decodeHtmlEntities(val);
+    }
+    return attrs;
+  }
+
+  /**
+   * HTML-string fallback parser for service workers (where DOMParser is
+   * unavailable). Mirrors `scrapeProductFromDom` extraction order:
+   * 1. JSON-LD (`<script type="application/ld+json">`)
+   * 2. Structured `<meta>` / `itemprop="price"` tags
+   * 3. Catalog HTML price container selectors
+   */
+  function scrapeProductFromHtml(html, { url = null, key = null } = {}) {
+    const safeUrl = isCatalogOnlinerUrl(url);
+    const parsedRef = safeUrl ? parseProductUrl(safeUrl) : null;
+    const urlKey = parsedRef?.key || key || null;
+
+    if (typeof html !== "string" || !html.trim()) {
+      return {
+        key: urlKey,
+        title: "",
+        price: null,
+        currency: "BYN",
+        image: null,
+        url: safeUrl,
+        unavailable: false,
+        source: null,
+      };
+    }
+
+    const metas = [];
+    const metaRe = /<meta\b[^>]*>/gi;
+    let m;
+    while ((m = metaRe.exec(html)) !== null) {
+      metas.push(parseHtmlAttributes(m[0]));
+    }
+    const findMeta = (attr, value) => {
+      const target = value.toLowerCase();
+      const hit = metas.find((item) => (item[attr] || "").toLowerCase() === target);
+      return hit ? hit.content || "" : "";
+    };
+
+    const h1Match = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+    const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+    let title = cleanProductTitle(
+      h1Match?.[1] || findMeta("property", "og:title") || titleMatch?.[1] || ""
+    );
+    let image = isSafeHttpsUrl(findMeta("property", "og:image"));
+    let price = null;
+    let currency = "BYN";
+    let unavailable = false;
+    let source = null;
+
+    // Step 1: JSON-LD script blocks
+    const ldObjects = [];
+    const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+    while ((m = scriptRe.exec(html)) !== null) {
+      const attrs = parseHtmlAttributes(m[1] || "");
+      const type = (attrs.type || "").toLowerCase();
+      if (!type.includes("application/ld+json")) continue;
+      try {
+        ldObjects.push(JSON.parse(m[2] || "null"));
+      } catch {
+        /* ignore malformed JSON-LD */
+      }
+    }
+    const ld = extractProductFromJsonLdObjects(ldObjects, urlKey);
+    if (!title && ld.title) title = ld.title;
+    if (!image && ld.image) image = ld.image;
+    if (ld.price != null) {
+      price = ld.price;
+      currency = ld.currency || currency;
+      source = "html-jsonld";
+    } else if (ld.unavailable) {
+      unavailable = true;
+      source = "html-jsonld";
+    }
+
+    // Step 2: Structured meta / microdata price tags
+    if (price == null) {
+      const metaCandidates = [
+        findMeta("property", "product:price:amount"),
+        findMeta("property", "og:price:amount"),
+        findMeta("itemprop", "price"),
+        findMeta("name", "price"),
+      ];
+      const metaCurrency =
+        findMeta("property", "product:price:currency") ||
+        findMeta("property", "og:price:currency") ||
+        findMeta("itemprop", "pricecurrency") ||
+        null;
+
+      for (const candidate of metaCandidates) {
+        const parsed = parsePriceText(candidate);
+        if (parsed.price != null) {
+          price = parsed.price;
+          currency = metaCurrency || parsed.currency || currency;
+          unavailable = false;
+          source = "html-meta";
+          break;
+        }
+      }
+    }
+
+    if (price == null) {
+      const itemPropRe =
+        /<([a-z0-9]+)\b([^>]*\bitemprop\s*=\s*["']price["'][^>]*)>([\s\S]{0,120}?)<\/\1>/gi;
+      while ((m = itemPropRe.exec(html)) !== null) {
+        const attrs = parseHtmlAttributes(m[2] || "");
+        const rawVal = attrs.content || m[3].replace(/<[^>]+>/g, " ");
+        const parsed = parsePriceText(rawVal);
+        if (parsed.price != null) {
+          price = parsed.price;
+          currency = parsed.currency || currency;
+          unavailable = false;
+          source = "html-microdata";
+          break;
+        }
+      }
+    }
+
+    // Step 3: Known Onliner catalog HTML price containers
+    if (price == null) {
+      const containerRe =
+        /<([a-z0-9]+)\b[^>]*class\s*=\s*["'][^"']*(?:js-description-price-link|offers-description__link_nodecor|product-aside__price)[^"']*["'][^>]*>([\s\S]{0,300}?)<\/\1>/gi;
+      while ((m = containerRe.exec(html)) !== null) {
+        const text = m[2].replace(/<[^>]+>/g, " ");
+        const parsed = parsePriceText(text);
+        if (parsed.price != null) {
+          price = parsed.price;
+          currency = parsed.currency || currency;
+          unavailable = false;
+          source = "html-selector";
+          break;
+        }
+      }
+    }
+
+    return {
+      key: urlKey,
+      title,
+      price,
+      currency,
+      image,
+      url: ld.url || safeUrl,
+      unavailable,
+      source,
+    };
+  }
+
+  /**
+   * Fetch and parse a watched product's catalog HTML page as a secondary
+   * fallback. Reuses shared timeout/retry helpers with conservative retry limit.
+   */
+  async function fetchProductFromPage(pageUrl, key, options = {}) {
+    const safeUrl = isCatalogOnlinerUrl(pageUrl);
+    if (!safeUrl) return null;
+
+    const html = await fetchTextWithRetry(safeUrl, {
+      timeoutMs: options.timeoutMs ?? FETCH_TIMEOUT_MS,
+      maxRetries: Math.min(options.maxRetries ?? 1, 1),
+      retryDelayMs: options.retryDelayMs ?? FETCH_RETRY_DELAY_MS,
+      fetchOptions: {
+        headers: { Accept: "text/html,application/xhtml+xml" },
+        credentials: "omit",
+        cache: "no-store",
+        ...(options.pageFetchOptions || {}),
+      },
+    });
+
+    const scraped = scrapeProductFromHtml(html, { url: safeUrl, key });
+    if (scraped.price == null && !scraped.unavailable) {
+      return null;
+    }
+
+    return {
+      key: key || scraped.key,
+      id: null,
+      title: scraped.title || key,
+      price: scraped.price,
+      currency: scraped.currency || "BYN",
+      url: scraped.url || safeUrl,
+      image: scraped.image || null,
+      offersCount: null,
+      unavailable: Boolean(scraped.unavailable && scraped.price == null),
+      unavailableReason:
+        scraped.unavailable && scraped.price == null ? "no_offers" : null,
+      shapeChanged: false,
+      source: scraped.source || "html-fallback",
+      fetchedAt: Date.now(),
+    };
+  }
+
+  /**
+   * Resilient product fetch for watched items.
+   *
+   * Fallback order:
+   * 1. Public catalog JSON API (`https://catalog.api.onliner.by/products/{key}`)
+   *    via `fetchJsonWithRetry` (timeout + exponential backoff retries):
+   *    a) Canonical `prices.price_min.amount`
+   *    b) Alternate JSON price fields if the API payload changed shape
+   * 2. Watched product HTML page (`options.fallbackUrl` on `catalog.onliner.by`)
+   *    via `fetchTextWithRetry` + `scrapeProductFromHtml` (JSON-LD -> meta/microdata -> HTML selectors):
+   *    - Triggered ONLY when Step 1 fails with a non-404/410 error OR Step 1
+   *      returned an unrecognized JSON shape (`shapeChanged: true`) without a price.
+   *    - Skipped on HTTP 404/410 (delisted) and on explicit API `prices: null` /
+   *      `offers.count === 0` (out of stock).
+   *    - Skipped when no valid `catalog.onliner.by` URL is available.
+   */
+  async function fetchProductWithFallback(key, options = {}) {
+    const { fallbackUrl = null, ...fetchOpts } = options;
+    const safeFallbackUrl = isCatalogOnlinerUrl(fallbackUrl);
+
+    let apiError = null;
+    let apiSnapshot = null;
+
+    try {
+      apiSnapshot = await fetchProduct(key, fetchOpts);
+      if (!apiSnapshot.shapeChanged) {
+        return apiSnapshot;
+      }
+    } catch (err) {
+      // HTTP 404/410 means the product was delisted; do not scrape HTML.
+      if (err?.status === 404 || err?.status === 410) {
+        throw err;
+      }
+      apiError = err;
+    }
+
+    if (safeFallbackUrl) {
+      try {
+        const pageSnapshot = await fetchProductFromPage(
+          safeFallbackUrl,
+          key,
+          fetchOpts
+        );
+        if (pageSnapshot) {
+          return {
+            ...pageSnapshot,
+            title:
+              pageSnapshot.title && pageSnapshot.title !== key
+                ? pageSnapshot.title
+                : apiSnapshot?.title || key,
+            image: pageSnapshot.image || apiSnapshot?.image || null,
+            url: pageSnapshot.url || apiSnapshot?.url || safeFallbackUrl,
+          };
+        }
+      } catch (pageErr) {
+        if (pageErr?.status === 404 || pageErr?.status === 410) {
+          throw pageErr;
+        }
+        /* preserve primary API error below when fallback page also fails */
+      }
+    }
+
+    if (apiError) {
+      throw apiError;
+    }
+
+    throw new Error(t("noPriceInApi"));
   }
 
   // Serialize read-modify-write storage ops within the same JS context.
@@ -1217,6 +1885,75 @@
     });
   }
 
+  function formatBadgeText(count) {
+    const n = Math.max(0, Math.floor(Number(count) || 0));
+    if (n <= 0) return "";
+    if (n === 1) return "↓";
+    if (n <= 9) return `↓${n}`;
+    return "↓9+";
+  }
+
+  function normalizeUnreadDropKeys(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    const clean = [];
+    for (const key of raw) {
+      if (typeof key !== "string" || !key || seen.has(key)) continue;
+      seen.add(key);
+      clean.push(key);
+    }
+    return clean;
+  }
+
+  async function getUnreadDropKeys() {
+    const result = await chrome.storage.local.get(UNREAD_DROPS_KEY);
+    return normalizeUnreadDropKeys(result[UNREAD_DROPS_KEY]);
+  }
+
+  async function addUnreadDropKey(key) {
+    if (typeof key !== "string" || !key) return getUnreadDropKeys();
+    return withStorageLock(async () => {
+      const current = await getUnreadDropKeys();
+      if (current.includes(key)) return current;
+      const next = [...current, key];
+      await chrome.storage.local.set({ [UNREAD_DROPS_KEY]: next });
+      return next;
+    });
+  }
+
+  async function removeUnreadDropKey(key) {
+    if (typeof key !== "string" || !key) return getUnreadDropKeys();
+    return withStorageLock(async () => {
+      const current = await getUnreadDropKeys();
+      if (!current.includes(key)) return current;
+      const next = current.filter((k) => k !== key);
+      await chrome.storage.local.set({ [UNREAD_DROPS_KEY]: next });
+      return next;
+    });
+  }
+
+  async function clearUnreadDropKeys() {
+    return withStorageLock(async () => {
+      const current = await getUnreadDropKeys();
+      if (current.length > 0) {
+        await chrome.storage.local.set({ [UNREAD_DROPS_KEY]: [] });
+      }
+      return [];
+    });
+  }
+
+  async function pruneUnreadDropKeys(validWatches) {
+    const watchMap = isPlainObject(validWatches) ? validWatches : {};
+    return withStorageLock(async () => {
+      const current = await getUnreadDropKeys();
+      const next = current.filter((k) => Boolean(watchMap[k]));
+      if (next.length !== current.length) {
+        await chrome.storage.local.set({ [UNREAD_DROPS_KEY]: next });
+      }
+      return next;
+    });
+  }
+
   function formatPrice(amount, currency = "BYN") {
     if (amount == null || !Number.isFinite(amount)) return "—";
     const formatted = amount.toLocaleString("ru-BY", {
@@ -1275,6 +2012,9 @@
     SETTINGS_KEY,
     LAST_CHECK_KEY,
     NOTIFICATION_URLS_KEY,
+    UNREAD_DROPS_KEY,
+    BADGE_DROP_COLOR,
+    BADGE_TEXT_COLOR,
     BACKUP_APP_ID,
     BACKUP_SCHEMA_VERSION,
     PRICE_EPSILON,
@@ -1284,11 +2024,20 @@
     parseProductUrl,
     parseProductPageUrl,
     parseAmount,
+    parsePriceText,
     parseTargetPrice,
+    decodeHtmlEntities,
     isRetryableStatus,
+    fetchWithRetry,
     fetchJsonWithRetry,
+    fetchTextWithRetry,
+    extractProductFromApiPayload,
+    extractProductFromJsonLdObjects,
     fetchProduct,
+    fetchProductFromPage,
+    fetchProductWithFallback,
     scrapeProductFromDom,
+    scrapeProductFromHtml,
     normalizeCheckIntervalHours,
     getSettings,
     setSettings,
@@ -1299,6 +2048,12 @@
     saveNotificationTarget,
     consumeNotificationTarget,
     removeNotificationTarget,
+    formatBadgeText,
+    getUnreadDropKeys,
+    addUnreadDropKey,
+    removeUnreadDropKey,
+    clearUnreadDropKeys,
+    pruneUnreadDropKeys,
     getWatches,
     setWatches,
     isWatched,

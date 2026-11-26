@@ -195,11 +195,11 @@ function loadBackground({
   };
 }
 
-test("manifest and locales are valid and aligned for v1.1.0", () => {
+test("manifest and locales are valid and aligned for v1.2.0", () => {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8")
   );
-  assert.equal(manifest.version, "1.1.0");
+  assert.equal(manifest.version, "1.2.0");
   assert.equal(manifest.default_locale, "ru");
   assert.deepEqual(manifest.permissions, ["storage", "alarms", "notifications"]);
   assert.deepEqual(manifest.content_scripts[0].matches, [
