@@ -186,6 +186,11 @@ h1 {
   gap: 10px;
 }
 
+.loading-state[hidden],
+.list[hidden] {
+  display: none;
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--line);

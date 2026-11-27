@@ -4,6 +4,134 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Onliner Price Tracker</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7f8;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #d9e2e8;
+        --accent: #0e7490;
+        font-family: "Segoe UI", "PT Root UI", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        width: 390px;
+        max-height: 580px;
+        overflow: auto;
+        background:
+          radial-gradient(120% 80% at 100% -10%, #cfeef5 0%, transparent 55%),
+          var(--bg);
+        color: var(--ink);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .loading-state {
+        padding: 0 10px 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .loading-header {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 4px;
+        font-size: 12px;
+        color: var(--muted);
+        opacity: 0;
+        animation: opt-fade-in 160ms ease-out 120ms forwards;
+      }
+      .loading-spinner {
+        width: 13px;
+        height: 13px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        border: 2px solid var(--line);
+        border-top-color: var(--accent);
+        animation: opt-spin 700ms linear infinite;
+      }
+      .skeleton-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .skeleton-top {
+        display: grid;
+        grid-template-columns: 48px 1fr 64px;
+        gap: 10px;
+        align-items: start;
+      }
+      .skeleton-box {
+        border-radius: 6px;
+        background: #e9f0f3;
+        animation: opt-pulse 1.4s ease-in-out 120ms infinite;
+      }
+      .skeleton-thumb {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+      }
+      .skeleton-lines {
+        display: grid;
+        gap: 6px;
+        padding-top: 2px;
+      }
+      .skeleton-line-lg {
+        height: 13px;
+        width: 82%;
+      }
+      .skeleton-line-sm {
+        height: 10px;
+        width: 54%;
+      }
+      .skeleton-price {
+        height: 14px;
+        width: 64px;
+        margin-top: 2px;
+      }
+      .skeleton-chart {
+        height: 92px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, #f8fbfc, #eef5f7);
+      }
+      @keyframes opt-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes opt-fade-in {
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes opt-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.55;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .loading-header {
+          opacity: 1;
+          animation: none;
+        }
+        .loading-spinner,
+        .skeleton-box {
+          animation: none;
+        }
+      }
+    </style>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
@@ -27,14 +155,32 @@
       </div>
     </section>
 
-    <main>
+    <main id="main" aria-busy="true">
+      <div id="loading" class="loading-state" role="status" aria-live="polite">
+        <div class="loading-header">
+          <span class="loading-spinner" aria-hidden="true"></span>
+          <span id="loadingText" class="loading-text">Загрузка…</span>
+        </div>
+        <div class="skeleton-card" aria-hidden="true">
+          <div class="skeleton-top">
+            <div class="skeleton-box skeleton-thumb"></div>
+            <div class="skeleton-lines">
+              <div class="skeleton-box skeleton-line-lg"></div>
+              <div class="skeleton-box skeleton-line-sm"></div>
+            </div>
+            <div class="skeleton-box skeleton-price"></div>
+          </div>
+          <div class="skeleton-box skeleton-chart"></div>
+        </div>
+      </div>
+
       <p id="empty" class="empty" hidden>
         <span id="emptyBefore">Откройте товар на </span>
         <a href="https://catalog.onliner.by" target="_blank" rel="noreferrer"
           >catalog.onliner.by</a
         ><span id="emptyAfter"> и нажмите «Следить за ценой».</span>
       </p>
-      <ul id="list" class="list"></ul>
+      <ul id="list" class="list" hidden></ul>
     </main>
 
     <footer class="footer">
@@ -52,7 +198,7 @@
       </div>
     </footer>
 
-    <script src="shared.js"></script>
-    <script src="popup.js"></script>
+    <script src="shared.js" defer></script>
+    <script src="popup.js" defer></script>
   </body>
 </html>

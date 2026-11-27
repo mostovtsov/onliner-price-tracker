@@ -5,8 +5,10 @@
   const {
     ALLOWED_INTERVAL_HOURS,
     CHECK_INTERVAL_HOURS,
+    STORAGE_KEY,
     SETTINGS_KEY,
     PRICE_EPSILON,
+    normalizeCheckIntervalHours,
     getSettings,
     setSettings,
     getWatches,
@@ -22,6 +24,9 @@
     tPlural,
   } = OnlinerPT;
 
+  const mainEl = document.getElementById("main");
+  const loadingEl = document.getElementById("loading");
+  const loadingTextEl = document.getElementById("loadingText");
   const listEl = document.getElementById("list");
   const emptyEl = document.getElementById("empty");
   const statusEl = document.getElementById("status");
@@ -36,10 +41,61 @@
   const importReplaceBtn = document.getElementById("importReplaceBtn");
   const importCancelBtn = document.getElementById("importCancelBtn");
 
+  const CHART_BATCH_SIZE = 6;
+  let dateTimeFormatter = null;
+  try {
+    if (typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function") {
+      dateTimeFormatter = new Intl.DateTimeFormat("ru-BY", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+  } catch {
+    dateTimeFormatter = null;
+  }
+
   let pendingImportPayload = null;
   let renderSeq = 0;
   let isChecking = false;
   let preserveStatusUntil = 0;
+  let initialLoadComplete = false;
+
+  function formatCheckedAt(ts) {
+    const date = new Date(ts);
+    if (dateTimeFormatter) {
+      try {
+        return dateTimeFormatter.format(date);
+      } catch {
+        /* fallback to toLocaleString below */
+      }
+    }
+    return date.toLocaleString("ru-BY");
+  }
+
+  function finishInitialLoad() {
+    if (initialLoadComplete) return;
+    initialLoadComplete = true;
+    if (loadingEl) loadingEl.hidden = true;
+    if (mainEl && typeof mainEl.setAttribute === "function") {
+      mainEl.setAttribute("aria-busy", "false");
+    }
+  }
+
+  function scheduleFrame(fn) {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(fn);
+    } else {
+      setTimeout(fn, 0);
+    }
+  }
+
+  function scheduleAfterPaint(fn) {
+    scheduleFrame(() => setTimeout(fn, 0));
+  }
 
   function setStatusFeedback(text, holdMs = 4000) {
     statusEl.textContent = text;
@@ -66,6 +122,9 @@
       "popupSubtitleBefore"
     );
     checkBtn.textContent = t("checkNow");
+    if (loadingTextEl) {
+      loadingTextEl.textContent = t("loading");
+    }
     document.getElementById("emptyBefore").textContent = t("emptyStateBefore");
     document.getElementById("emptyAfter").textContent = t("emptyStateAfter");
     exportBtn.textContent = t("exportBtn");
@@ -97,7 +156,26 @@
   }
 
   applyStaticI18n();
-  clearDropBadge();
+
+  async function loadInitialState() {
+    const raw = await chrome.storage.local.get([STORAGE_KEY, SETTINGS_KEY]);
+    const watches =
+      raw && raw[STORAGE_KEY] && typeof raw[STORAGE_KEY] === "object"
+        ? raw[STORAGE_KEY]
+        : {};
+    const rawSettings =
+      raw && raw[SETTINGS_KEY] && typeof raw[SETTINGS_KEY] === "object"
+        ? raw[SETTINGS_KEY]
+        : {};
+    return {
+      watches,
+      settings: {
+        checkIntervalHours: normalizeCheckIntervalHours(
+          rawSettings.checkIntervalHours
+        ),
+      },
+    };
+  }
 
   async function syncSettingsUi() {
     try {
@@ -124,11 +202,13 @@
     };
   }
 
-  function drawChart(canvas, history, targetPrice = null) {
+  function drawChart(canvas, history, targetPrice = null, dims = null) {
+    if (!canvas || typeof canvas.getContext !== "function") return;
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth || 346;
-    const cssH = canvas.clientHeight || 92;
+    const cssW = (dims && dims.width) || canvas.clientWidth || 346;
+    const cssH = (dims && dims.height) || canvas.clientHeight || 92;
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -260,7 +340,38 @@
     return h.length ? h[0].price : null;
   }
 
-  function renderWatch(watch) {
+  function scheduleCharts(tasks, seq) {
+    if (!tasks.length) return;
+    let offset = 0;
+
+    function runBatch() {
+      if (seq !== renderSeq) return;
+      const end = Math.min(offset + CHART_BATCH_SIZE, tasks.length);
+      const batch = [];
+      for (let i = offset; i < end; i++) {
+        const task = tasks[i];
+        batch.push({
+          task,
+          width: task.canvas.clientWidth || 346,
+          height: task.canvas.clientHeight || 92,
+        });
+      }
+      for (const item of batch) {
+        drawChart(item.task.canvas, item.task.history, item.task.targetPrice, {
+          width: item.width,
+          height: item.height,
+        });
+      }
+      offset = end;
+      if (offset < tasks.length) {
+        scheduleFrame(runBatch);
+      }
+    }
+
+    scheduleFrame(runBatch);
+  }
+
+  function createWatchCard(watch, chartTasks) {
     const li = document.createElement("li");
     li.className = watch.unavailable ? "card is-unavailable" : "card";
 
@@ -271,6 +382,10 @@
       const img = document.createElement("img");
       img.className = "thumb";
       img.alt = "";
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.width = 48;
+      img.height = 48;
       img.src = watch.image;
       top.appendChild(img);
     } else {
@@ -323,7 +438,7 @@
     const meta = document.createElement("div");
     meta.className = "meta";
     const checked = watch.lastCheckedAt
-      ? new Date(watch.lastCheckedAt).toLocaleString("ru-BY")
+      ? formatCheckedAt(watch.lastCheckedAt)
       : t("neverChecked");
     meta.textContent = watch.lastError
       ? t("errorPrefix", [watch.lastError])
@@ -445,28 +560,54 @@
     actions.appendChild(remove);
     li.appendChild(actions);
 
-    listEl.appendChild(li);
-    // Draw after layout so clientWidth is available
-    requestAnimationFrame(() =>
-      drawChart(canvas, watch.history, watch.targetPrice ?? null)
+    chartTasks.push({
+      canvas,
+      history: watch.history,
+      targetPrice: watch.targetPrice ?? null,
+    });
+    return li;
+  }
+
+  function renderWatches(watches, { seq, preserveStatus = false }) {
+    const items = Object.values(watches).sort(
+      (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
     );
+    const chartTasks = [];
+    const fragment =
+      typeof document.createDocumentFragment === "function"
+        ? document.createDocumentFragment()
+        : null;
+
+    listEl.innerHTML = "";
+    for (const watch of items) {
+      const li = createWatchCard(watch, chartTasks);
+      if (fragment) {
+        fragment.appendChild(li);
+      } else {
+        listEl.appendChild(li);
+      }
+    }
+    if (fragment) {
+      listEl.appendChild(fragment);
+    }
+
+    emptyEl.hidden = items.length > 0;
+    listEl.hidden = items.length === 0;
+    finishInitialLoad();
+
+    if (!preserveStatus && !isChecking) {
+      statusEl.textContent = items.length
+        ? tPlural("watchedCount", items.length)
+        : "";
+    }
+    scheduleCharts(chartTasks, seq);
   }
 
   async function render({ preserveStatus = false } = {}) {
     const seq = ++renderSeq;
     const watches = await getWatches();
     if (seq !== renderSeq) return;
-    const items = Object.values(watches).sort(
-      (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
-    );
-    listEl.innerHTML = "";
-    emptyEl.hidden = items.length > 0;
-    items.forEach(renderWatch);
-    if (!preserveStatus && !isChecking) {
-      statusEl.textContent = items.length
-        ? tPlural("watchedCount", items.length)
-        : "";
-    }
+    renderWatches(watches, { seq, preserveStatus });
   }
 
   function hideImportConfirm() {
@@ -633,6 +774,23 @@
     }
   });
 
-  syncSettingsUi();
-  render();
+  async function init() {
+    const seq = ++renderSeq;
+    try {
+      const { watches, settings } = await loadInitialState();
+      intervalSelect.value = String(settings.checkIntervalHours);
+      if (seq === renderSeq) {
+        renderWatches(watches, { seq, preserveStatus: false });
+      }
+    } catch (err) {
+      finishInitialLoad();
+      emptyEl.hidden = true;
+      listEl.hidden = true;
+      setStatusFeedback(String(err?.message || err));
+    } finally {
+      scheduleAfterPaint(() => clearDropBadge());
+    }
+  }
+
+  init();
 })();
