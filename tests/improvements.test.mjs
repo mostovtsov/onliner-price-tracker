@@ -299,11 +299,11 @@ function okProductResponse(key, { price, currency = "BYN", name, url, offersCoun
 
 // ---------- Manifest & i18n ----------
 
-test("v1.2.0: manifest permissions remain minimal and RU/EN locales have matching keys & placeholders", () => {
+test("v1.2.1: manifest permissions remain minimal and RU/EN locales have matching keys & placeholders", () => {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8")
   );
-  assert.equal(manifest.version, "1.2.0");
+  assert.equal(manifest.version, "1.2.1");
   assert.deepEqual(manifest.permissions, ["storage", "alarms", "notifications"]);
   assert.deepEqual(manifest.host_permissions, [
     "https://catalog.onliner.by/*",

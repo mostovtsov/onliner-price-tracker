@@ -131,6 +131,10 @@
     "message": "Checking…",
     "description": "Status while manual check runs"
   },
+  "loading": {
+    "message": "Loading…",
+    "description": "Loading indicator text while popup reads saved watches"
+  },
   "checkSummary": {
     "message": "Checked $1, drops $2",
     "description": "Status after manual check",

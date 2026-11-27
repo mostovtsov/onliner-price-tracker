@@ -131,6 +131,10 @@
     "message": "Проверка…",
     "description": "Status while manual check runs"
   },
+  "loading": {
+    "message": "Загрузка…",
+    "description": "Loading indicator text while popup reads saved watches"
+  },
   "checkSummary": {
     "message": "Проверено: $1, снижений: $2",
     "description": "Status after manual check",
